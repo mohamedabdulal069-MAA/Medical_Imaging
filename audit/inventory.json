@@ -1,0 +1,106 @@
+{
+  "archives": [
+    {
+      "path": "E:\\Medical Imaging Paper\\From Laiba\\CNN Models.zip",
+      "sha256": "be21e3b1111e9fc3d04c8be84826a87b1d1de5d301d8c19597c323e3ba3a004a",
+      "entries": [
+        "rsnavgg.ipynb",
+        "rsnaefficientnet.ipynb",
+        "rsnadensenet.ipynb",
+        "rsnaresnet50.ipynb",
+        "rsnainception.ipynb",
+        "ensemblemodel.ipynb"
+      ]
+    },
+    {
+      "path": "E:\\Medical Imaging Paper\\From Laiba\\Medical Imaging (2).zip",
+      "sha256": "f53cb5d5d69174bb4a3c50a7acf7e3bad1872189cb3918fb438c5518bca9adde",
+      "entries": [
+        "Medical Imaging (2)/",
+        "Medical Imaging (2)/classificationmodel.py",
+        "Medical Imaging (2)/ensemble_model.h5",
+        "Medical Imaging (2)/notebook5af9128ec7.ipynb",
+        "Medical Imaging (2)/pcaensemble.ipynb",
+        "Medical Imaging (2)/pca_model.pkl",
+        "Medical Imaging (2)/segmentation.ipynb",
+        "Medical Imaging (2)/vtkcode.py"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "originals\\cnn_models\\ensemblemodel.ipynb",
+      "bytes": 86917,
+      "sha256": "9eb09ba6a0152761b1d15cd216f88a80dea631b875c504d5f09b487502132f0e",
+      "code_cells": 3
+    },
+    {
+      "path": "originals\\cnn_models\\rsnadensenet.ipynb",
+      "bytes": 316257,
+      "sha256": "09819565ba2b1a7827cf6937539c225c0e18a5d81a282305835ff7e14fc7cb98",
+      "code_cells": 5
+    },
+    {
+      "path": "originals\\cnn_models\\rsnaefficientnet.ipynb",
+      "bytes": 336891,
+      "sha256": "4dd894821d5d56b34af8aef30bd6b79dabff0217a865b7166d4f3c57c6849ac3",
+      "code_cells": 6
+    },
+    {
+      "path": "originals\\cnn_models\\rsnainception.ipynb",
+      "bytes": 13815,
+      "sha256": "8f6018dda7b54a866bc87c159995dd3f21b61963f9b3bae926ae8e6647e92aa1",
+      "code_cells": 4
+    },
+    {
+      "path": "originals\\cnn_models\\rsnaresnet50.ipynb",
+      "bytes": 320476,
+      "sha256": "b95ee5a30486323e2e9ec715067030e5f43e3e412dfbab4df98c41283f007d00",
+      "code_cells": 5
+    },
+    {
+      "path": "originals\\cnn_models\\rsnavgg.ipynb",
+      "bytes": 320784,
+      "sha256": "fd49ea2f5eb8caa7fb81e2d38d9968819f5bc00b835a355c3ea895e44a104591",
+      "code_cells": 5
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\classificationmodel.py",
+      "bytes": 6225,
+      "sha256": "7e2f19286ae9e31fe2ab2c61e5045f942402e9a531b1885f09e8ca2f0ba02103"
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\ensemble_model.h5",
+      "bytes": 703024,
+      "sha256": "5f0dcde08362bc67f4b71e96d73b7c72514d5209e32bba3815147c91c05c1af1"
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\notebook5af9128ec7.ipynb",
+      "bytes": 361251,
+      "sha256": "3b6bd0ed7088a31c49c953f85bb4a367ca866ab523380829f1bf92e22d896f5b",
+      "code_cells": 2
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\pca_model.pkl",
+      "bytes": 11038655,
+      "sha256": "0927d56d420de205d50ed134cd579d2b188f0c76dd6cfdf99d423a42699ba586"
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\pcaensemble.ipynb",
+      "bytes": 14188,
+      "sha256": "8d18078ec8207af1d06f24c061f4bbd774d74a13c55704ac1767b026968095a5",
+      "code_cells": 3
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\segmentation.ipynb",
+      "bytes": 22610,
+      "sha256": "d9b13e11ff2302b929679855efd157ef83affa76d86cdcff1e0bb4ee67b83d23",
+      "code_cells": 3
+    },
+    {
+      "path": "originals\\medical_imaging\\Medical Imaging (2)\\vtkcode.py",
+      "bytes": 3532,
+      "sha256": "048d023444ec840998300f62edeb22873b674ef9568461f2606bd6777ca6dc5c"
+    }
+  ]
+}

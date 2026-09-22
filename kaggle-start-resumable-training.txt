@@ -1,0 +1,335 @@
+# Paste this ENTIRE file into ONE new Kaggle code cell.
+# Installs the new runner, runs synthetic tests, then starts 100 real batches.
+from pathlib import Path
+import sys
+import subprocess
+import importlib
+import warnings
+import os
+
+project = Path('/kaggle/working/ich-research')
+assert (project / 'ich/cohort.py').is_file(), 'Restore the complete training backup first.'
+assert Path('/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv').is_file()
+sys.path.insert(0, str(project))
+files = {}
+
+files['ich/resumable.py'] = r'''"""Bounded, resumable CNN training; test pixels are never loaded here.
+
+Recovery is at the last committed batch, with optimizer state and data order.
+Keras dropout RNG continuity across processes is not promised bit-for-bit.
+"""
+from concurrent.futures import ThreadPoolExecutor
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+import shutil
+import time
+import uuid
+
+import numpy as np
+from . import LABELS
+from .dataset import load_manifest, manifest_digest
+from .preprocessing import dicom_to_hu, window_image, WINDOWS, PREPROCESS_VERSION
+from .training import sha256, set_seed, write_json
+
+
+def checked_image(row, size):
+    """One decode supplies both integrity verification and network input."""
+    import hashlib
+    import pydicom
+    ds = pydicom.dcmread(row.path)
+    actual = tuple(str(getattr(ds, a, "")).strip() for a in
+                   ("PatientID", "StudyInstanceUID", "SeriesInstanceUID", "SOPInstanceUID"))
+    if actual != (row.patient_id, row.study_id, row.series_id, row.sop_id):
+        raise ValueError(f"DICOM identity changed: {row.image_id}")
+    hu = np.ascontiguousarray(dicom_to_hu(ds), dtype="<f4")
+    digest = hashlib.sha256(str(hu.shape).encode() + hu.tobytes()).hexdigest()
+    if digest != row.pixel_hash:
+        raise ValueError(f"DICOM pixels changed: {row.image_id}")
+    return window_image(hu, size)
+
+
+def ordered_frame(frame, epoch, seed, training):
+    frame = frame.sort_values("image_id").reset_index(drop=True)
+    if training:
+        order = np.random.default_rng(np.random.SeedSequence([seed, epoch])).permutation(len(frame))
+        frame = frame.iloc[order].reset_index(drop=True)
+    return frame
+
+
+def save_checkpoint(model, state, output):
+    """Publish model and progress together; retain the preceding generation."""
+    output = Path(output)
+    pointer = output / "current.json"
+    previous = json.loads(pointer.read_text())["directory"] if pointer.exists() else None
+    name = "checkpoint-" + uuid.uuid4().hex
+    folder = output / name
+    folder.mkdir()
+    model.save(folder / "model.keras")
+    committed = dict(state, model_sha256=sha256(folder / "model.keras"),
+                     optimizer_steps=int(model.optimizer.iterations.numpy()))
+    write_json(folder / "state.json", committed)
+    temporary = output / "current.json.tmp"
+    write_json(temporary, {"directory": name, "state_sha256": sha256(folder / "state.json")})
+    os.replace(temporary, pointer)
+    # Only this runner's generated checkpoint folders; never follow symlinks.
+    for old in output.glob("checkpoint-*"):
+        suffix = old.name.removeprefix("checkpoint-")
+        if (old.name not in (name, previous) and len(suffix) == 32
+                and all(c in "0123456789abcdef" for c in suffix)
+                and old.is_dir() and not old.is_symlink()
+                and old.resolve().parent == output.resolve()):
+            shutil.rmtree(old)
+    print(f"Checkpoint saved: epoch {state['epoch'] + 1}, "
+          f"{state['phase']}, next batch {state['next_batch']}", flush=True)
+
+
+def read_checkpoint(output):
+    output = Path(output)
+    pointer = json.loads((output / "current.json").read_text())
+    folder = output / pointer["directory"]
+    if folder.resolve().parent != output.resolve():
+        raise ValueError("Invalid checkpoint path")
+    if sha256(folder / "state.json") != pointer["state_sha256"]:
+        raise ValueError("Checkpoint state checksum mismatch")
+    state = json.loads((folder / "state.json").read_text())
+    if sha256(folder / "model.keras") != state["model_sha256"]:
+        raise ValueError("Checkpoint model checksum mismatch")
+    return folder, state
+
+
+def run(manifest_path, output, *, baseline="resnet50", epochs=3,
+        batch_size=16, seed=42, weights="imagenet", checkpoint_every=250,
+        max_minutes=45, max_batches=None, workers=4, require_gpu=True):
+    """Run a bounded segment; call again with the same scientific configuration.
+
+    max_batches and max_minutes bound each invocation, not the experiment.
+    Full CNN/feature-ensemble baselines supported. PCA remains in training.py.
+    No early stopping or test evaluation; fixed epochs and frozen backbones.
+    """
+    import tensorflow as tf
+    from .models import CNN_NAMES, build_model, image_size
+    if baseline not in (*CNN_NAMES, "ensemble"):
+        raise ValueError("This runner supports CNNs and the feature ensemble, not PCA")
+    if min(epochs, batch_size, checkpoint_every, workers) < 1 or max_minutes <= 0:
+        raise ValueError("Positive run settings required")
+    if max_batches is not None and max_batches < 1:
+        raise ValueError("max_batches must be positive")
+    if require_gpu and not tf.config.list_physical_devices("GPU"):
+        raise RuntimeError("GPU required; select a GPU session first")
+    started = time.monotonic()
+    print("Validating manifest metadata (no up-front DICOM scan)...", flush=True)
+    manifest = load_manifest(manifest_path)
+    size = image_size(baseline)
+    lr = 1e-3 if baseline == "densenet121" else 1e-4
+    versions = {p: importlib.metadata.version(p) for p in
+                ("tensorflow", "keras", "numpy", "pandas", "pydicom", "scikit-image")}
+    sources = {p.name: sha256(p) for p in Path(__file__).parent.glob("*.py")}
+    contract = dict(schema=1, baseline=baseline, epochs=epochs, batch_size=batch_size,
+                    seed=seed, initial_weights=weights, learning_rate=lr,
+                    split_digest=manifest_digest(manifest), versions=versions,
+                    source_hashes=sources, labels=list(LABELS), size=list(size),
+                    preprocessing=PREPROCESS_VERSION, windows=[list(w) for w in WINDOWS],
+                    frozen_backbone=True, loss="binary_crossentropy",
+                    integrity="identity and HU hash verified at each image load",
+                    resume_bitwise_equivalent=False)
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    contract_path = output / "run-config.json"
+    if contract_path.exists():
+        if json.loads(contract_path.read_text()) != contract:
+            raise ValueError("Resume contract changed; keep data, code, versions and settings fixed")
+    else:
+        if any(output.iterdir()):
+            raise ValueError("New run needs an empty output folder")
+        manifest.to_csv(output / "manifest.csv", index=False)
+        write_json(contract_path, contract)
+    set_seed(seed)
+    state = dict(epoch=0, phase="train", next_batch=0, train_sum=0., train_n=0,
+                 validation_sum=0., validation_n=0, history=[], invocations=0)
+    device = "/GPU:0" if require_gpu else "/CPU:0"
+    with tf.device(device):
+        if (output / "current.json").exists():
+            folder, state = read_checkpoint(output)
+            model = tf.keras.models.load_model(folder / "model.keras", safe_mode=True)
+            if int(model.optimizer.iterations.numpy()) != state["optimizer_steps"]:
+                raise ValueError("Optimizer state was not restored")
+            print(f"Resumed optimizer step {state['optimizer_steps']}", flush=True)
+        else:
+            print("Building baseline (ImageNet weights may download)...", flush=True)
+            model = build_model(baseline, weights=weights)
+            model.compile(optimizer=tf.keras.optimizers.Adam(lr),
+                          loss="binary_crossentropy", jit_compile=False)
+        state["invocations"] += 1
+        processed = 0
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            while state["epoch"] < epochs:
+                training = state["phase"] == "train"
+                frame = ordered_frame(manifest[manifest.partition.eq(state["phase"])],
+                                      state["epoch"], seed, training)
+                total = (len(frame) + batch_size - 1) // batch_size
+                for batch in range(state["next_batch"], total):
+                    rows = frame.iloc[batch * batch_size:(batch + 1) * batch_size]
+                    x = np.stack(list(pool.map(lambda r: checked_image(r, size), rows.itertuples())))
+                    y = rows[list(LABELS)].to_numpy(np.float32)
+                    model.reset_metrics()
+                    result = (model.train_on_batch(x, y, return_dict=True) if training
+                              else model.test_on_batch(x, y, return_dict=True))
+                    loss = float(result["loss"])
+                    if not np.isfinite(loss):
+                        raise RuntimeError("Nonfinite loss; latest finite checkpoint is preserved")
+                    phase = state["phase"]
+                    state[phase + "_sum"] += loss * len(rows)
+                    state[phase + "_n"] += len(rows)
+                    state["next_batch"] = batch + 1
+                    processed += 1
+                    if processed == 1 or processed % 50 == 0:
+                        print(f"Epoch {state['epoch']+1}/{epochs} {phase}: "
+                              f"{batch+1}/{total} batches; {(time.monotonic()-started)/60:.1f} min", flush=True)
+                    bounded = ((max_batches is not None and processed >= max_batches)
+                               or time.monotonic() - started >= max_minutes * 60)
+                    if processed % checkpoint_every == 0 or bounded:
+                        save_checkpoint(model, state, output)
+                    if bounded:
+                        print("SEGMENT SAVED. Re-run this call to continue; no test pixels used.", flush=True)
+                        return dict(status="paused", output=str(output), **state)
+                state["next_batch"] = 0
+                if training:
+                    state["phase"] = "validation"
+                else:
+                    record = dict(epoch=state["epoch"] + 1,
+                                  loss=state["train_sum"] / state["train_n"],
+                                  val_loss=state["validation_sum"] / state["validation_n"])
+                    state["history"].append(record)
+                    print(record, flush=True)
+                    state.update(epoch=state["epoch"] + 1, phase="train", train_sum=0.,
+                                 train_n=0, validation_sum=0., validation_n=0)
+                save_checkpoint(model, state, output)
+    # Publish a standard inference bundle only after every requested epoch.
+    folder, _ = read_checkpoint(output)
+    shutil.copy2(folder / "model.keras", output / "model.keras")
+    write_json(output / "history.json", state["history"])
+    metadata = dict(contract, status="trained", epochs_completed=epochs,
+                    epochs_requested=epochs, thresholds=[0.5]*6,
+                    threshold_policy="fixed a priori; no test tuning",
+                    artifacts={"model.keras": sha256(output / "model.keras")})
+    write_json(output / "metadata.json", metadata)
+    print("TRAINING COMPLETE. Test evaluation has not been run.", flush=True)
+    return dict(status="complete", output=str(output), **state)
+'''
+
+files['tests/test_resumable.py'] = r'''"""Actual optimizer recovery and no held-out-pixel access on synthetic CTs."""
+import json
+import numpy as np
+import pytest
+import tensorflow as tf
+from ich import resumable, models
+from test_pipeline import synthetic_manifest, tiny_image_model
+
+
+def test_interrupted_training_matches_continuous_without_dropout(tmp_path, dicom, monkeypatch):
+    manifest = synthetic_manifest(tmp_path, dicom)
+    path = tmp_path / "manifest.csv"
+    manifest.to_csv(path, index=False)
+    monkeypatch.setattr(models, "build_model", tiny_image_model)
+    seen = []
+    original = resumable.checked_image
+    def checked(row, size):
+        assert row.partition != "test"
+        seen.append(row.image_id)
+        return original(row, size)
+    monkeypatch.setattr(resumable, "checked_image", checked)
+    kwargs = dict(epochs=2, batch_size=2, weights=None, workers=1,
+                  require_gpu=False, max_minutes=10, checkpoint_every=2)
+    result = resumable.run(path, tmp_path / "resume", max_batches=1, **kwargs)
+    assert result["status"] == "paused"
+    _, saved = resumable.read_checkpoint(tmp_path / "resume")
+    assert saved["optimizer_steps"] == 1
+    first_ids = seen.copy()
+    seen.clear()
+    # Recover exactly the next training batch, not the already committed one.
+    resumable.run(path, tmp_path / "resume", max_batches=1, **kwargs)
+    assert not set(first_ids) & set(seen)
+    paused_validation = resumable.run(path, tmp_path / "resume", max_batches=2, **kwargs)
+    assert paused_validation["phase"] == "validation"
+    assert paused_validation["validation_n"] > 0
+    completed = resumable.run(path, tmp_path / "resume", **kwargs)
+    assert completed["status"] == "complete"
+    resumed = tf.keras.models.load_model(tmp_path / "resume/model.keras")
+    resumable.run(path, tmp_path / "continuous", **kwargs)
+    continuous = tf.keras.models.load_model(tmp_path / "continuous/model.keras")
+    assert int(resumed.optimizer.iterations.numpy()) == int(continuous.optimizer.iterations.numpy())
+    for a, b in zip(resumed.weights, continuous.weights):
+        np.testing.assert_allclose(a.numpy(), b.numpy(), rtol=1e-6, atol=1e-6)
+    assert len(completed["history"]) == 2
+    with pytest.raises(ValueError, match="contract changed"):
+        resumable.run(path, tmp_path / "resume", **dict(kwargs, seed=17))
+    # Resumption refuses a changed checkpoint, rather than silently starting over.
+    folder, _ = resumable.read_checkpoint(tmp_path / "resume")
+    with (folder / "model.keras").open("ab") as stream:
+        stream.write(b"tampered")
+    with pytest.raises(ValueError, match="checksum"):
+        resumable.run(path, tmp_path / "resume", **kwargs)
+
+
+def test_failure_during_checkpoint_leaves_previous_recoverable(tmp_path, monkeypatch):
+    model = tiny_image_model()
+    model.compile(optimizer="adam", loss="binary_crossentropy")
+    model.train_on_batch(np.zeros((1, 224, 224, 3), np.float32), np.zeros((1, 6), np.float32))
+    state = dict(epoch=0, phase="train", next_batch=1)
+    resumable.save_checkpoint(model, state, tmp_path)
+    pointer = (tmp_path / "current.json").read_bytes()
+    def fail(*args, **kwargs):
+        raise OSError("simulated failed model write")
+    monkeypatch.setattr(model, "save", fail)
+    with pytest.raises(OSError):
+        resumable.save_checkpoint(model, dict(state, next_batch=2), tmp_path)
+    assert (tmp_path / "current.json").read_bytes() == pointer
+    _, recovered = resumable.read_checkpoint(tmp_path)
+    assert recovered["next_batch"] == 1
+
+
+def test_lazy_check_rejects_stale_pixels(tmp_path, dicom):
+    frame = synthetic_manifest(tmp_path, dicom)
+    frame.loc[0, "pixel_hash"] = "changed"
+    with pytest.raises(ValueError, match="pixels changed"):
+        resumable.checked_image(next(frame.itertuples()), (224, 224))
+'''
+
+for name, content in files.items():
+    target = project / name
+    if target.exists() and target.read_text(encoding='utf-8') != content:
+        raise RuntimeError(f'Different runner already installed: {target}. Do not overwrite an active run.')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding='utf-8')
+
+print('Checking recovery, leakage, PCA fit restrictions and cohort tests...', flush=True)
+result = subprocess.run(
+    [sys.executable, '-m', 'pytest', '-q', 'tests/test_resumable.py',
+     'tests/test_integrity.py', 'tests/test_cohort.py'],
+    cwd=project, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    env=dict(os.environ, CUDA_VISIBLE_DEVICES='-1'),
+)
+print(result.stdout, flush=True)
+if result.returncode:
+    raise RuntimeError('Tests failed. Training has not started.')
+
+# Only the already-reviewed UID syntax warning is hidden; other warnings/errors remain.
+warnings.filterwarnings('ignore', message=r"Invalid value for VR UI: 'ID_.*",
+                        category=UserWarning, module=r'pydicom\.valuerep')
+importlib.invalidate_caches()
+from ich import resumable
+import tensorflow as tf
+tf.keras.backend.clear_session()
+
+result = resumable.run(
+    '/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv',
+    '/kaggle/working/resnet50-full-s42',
+    baseline='resnet50', epochs=3, batch_size=16, seed=42,
+    weights='imagenet', checkpoint_every=100,
+    max_batches=100, max_minutes=45, workers=4,
+)
+print('Segment status:', result['status'])
+print('Run folder:', result['output'])
+print('This is the start of the full run, not final experimental results.')

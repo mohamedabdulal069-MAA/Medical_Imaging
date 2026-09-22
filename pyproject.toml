@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ich-research"
+version = "0.1.0"
+description = "Audited intracranial hemorrhage research baselines"
+requires-python = ">=3.11,<3.14"
+dependencies = ["numpy>=1.26,<3", "pandas>=2.2,<4", "pydicom>=3,<4", "scikit-image>=0.24,<1", "scikit-learn>=1.5,<2", "tensorflow>=2.18,<2.22"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+ich = "ich.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ich*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

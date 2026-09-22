@@ -1,0 +1,22 @@
+# Run ONLY after the training segment has returned.
+from pathlib import Path
+import os
+import zipfile
+from datetime import datetime
+from IPython.display import FileLink, display
+work = Path('/kaggle/working')
+run_dir = work / 'resnet50-full-s42'
+assert (run_dir / 'current.json').is_file(), 'No committed training checkpoint yet.'
+archive = work / ('ich-training-progress-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.zip')
+folders = ['resnet50-full-s42', 'ich-research', 'rsna-reviewed-cohort-v1']
+print('Packaging model, optimizer, progress, manifest and exact runner code...', flush=True)
+with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as z:
+    for name in folders:
+        folder = work / name
+        assert folder.is_dir(), f'Missing {folder}'
+        for path in folder.rglob('*'):
+            if path.is_file() and not any(p in {'__pycache__', '.pytest_cache', '.venv'} for p in path.parts):
+                z.write(path, path.relative_to(work))
+os.chdir(work)
+print('Download this new training-progress ZIP; the old preparation ZIP has no full-run weights.')
+display(FileLink(archive.name))

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+runs/
+data/
+
+# Existing files larger than 50 MiB (Git ignore patterns cannot filter by size).
+/ich-ready-for-training.zip
+/resnet50-pilot-20260920-180430-992869.zip
+/rsna-checkpoint-latest.zip
+/audit/recovered-checkpoint/scan.sqlite

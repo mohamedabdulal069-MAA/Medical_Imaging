@@ -1,0 +1,12 @@
+# Run in the SAME restored environment, one invocation at a time.
+import sys
+sys.path.insert(0, '/kaggle/working/ich-research')
+from ich.resumable import run
+result = run(
+    '/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv',
+    '/kaggle/working/resnet50-full-s42',
+    baseline='resnet50', epochs=3, batch_size=16, seed=42,
+    weights='imagenet', checkpoint_every=250,
+    max_batches=None, max_minutes=45, workers=4,
+)
+print('Segment status:', result['status'])
