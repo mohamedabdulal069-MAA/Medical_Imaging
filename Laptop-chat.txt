@@ -1,0 +1,2522 @@
+# Audit hemorrhage research repository
+
+> First, unzip the attached files, read all the codes inside the files and do the following:
+> Audit this intracranial hemorrhage medical-imaging repository as research software. Preserve all existing CNNs and ensembles as baselines, but do not trust or optimise the existing reported results. Identify and repair patient/image leakage, DICOM/Hounsfield-unit preprocessing problems, model-specific ImageNet preprocessing, multilabel evaluation errors, models being saved before training, train/inference inconsistencies, PCA leakage, and reproducibility issues. Refactor the repository into reusable dataset, preprocessing, models, losses, metrics, training, evaluation and explainability modules. Add automated tests that ensure no patient appears in more than one train/validation/test partition and that learned transformations such as PCA are fitted only on training data. Do not fabricate experimental results.
+>
+> User context
+>
+> Attachments:
+> - CNN Models.zip: `E:/Medical Imaging Paper/From Laiba/CNN Models.zip`
+> - Medical Imaging (2).zip: `E:/Medical Imaging Paper/From Laiba/Medical Imaging (2).zip`
+
+<details><summary>14 previous messages</summary>
+
+> I’ll unpack both archives, inspect all source code, and audit the data splits, preprocessing, training, and evaluation paths. I’ll preserve the existing architectures as baselines and distinguish verified fixes from anything that requires the dataset or new experiments.
+>
+> <details><summary>Ran 6 commands, searched the web</summary>
+>
+> - Ran `Get-ChildItem -Force; Get-Item -LiteralPath 'E:/Medical Imaging Paper/From Laiba/CNN Models.zip','E:/Medical Imaging Paper/From Laiba/Medical Imaging (2).zip' | Select-Object FullName,Length`
+>
+> - Ran `Expand-Archive -LiteralPath 'E:/Medical Imaging Paper/From Laiba/CNN Models.zip' -DestinationPath 'originals/cnn_models'; Expand-Archive -LiteralPath 'E:/Medical Imaging Paper/From Laiba/Medical Imaging (2).zip' -DestinationPath 'originals/medical_imaging'; rg --files -g '!*.png' -g '!*.jpg' -g '!*.jpeg'`
+>
+> - Ran `Get-Command python,pytest -ErrorAction SilentlyContinue | Select-Object Name,Source; rg --files -g AGENTS.md; python -c "import pathlib,json; out=pathlib.Path('audit/source'); out.mkdir(parents=True,exist_ok=True); files=list(pathlib.Path('originals').rglob('*')); [(out.joinpath(p.stem+'.py').write_text('\n\n'.join('# CELL '+str(i)+'\n'+''.join(c['source']) for i,c in enumerate(json.loads(p.read_text(encoding='utf-8'))['cells']) if c['cell_type']=='code'),encoding='utf-8')) for p in files if p.suffix=='.ipynb']; print('\n'.join(str(p) for p in files if p.is_file()))"`
+>
+> - Ran `New-Item -ItemType Directory -Force audit/source | Out-Null; Get-ChildItem originals -Recurse -Filter *.ipynb | ForEach-Object { $nb = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json; $cells = for ($i=0; $i -lt $nb.cells.Count; $i++) { if ($nb.cells[$i].cell_type -eq 'code') { '# CELL ' + $i; $nb.cells[$i].source -join '' } }; $cells | Set-Content -LiteralPath ('audit/source/' + $_.BaseName + '.py') }; Get-ChildItem audit/source | Select-Object Name,Length; Get-Content -LiteralPath 'originals/medical_imaging/Medical Imaging (2)/classificationmodel.py','originals/medical_imaging/Medical Imaging (2)/vtkcode.py'`
+>
+> - Ran `Get-Content audit/source/ensemblemodel.py,audit/source/pcaensemble.py,audit/source/notebook5af9128ec7.py,audit/source/segmentation.py`
+>
+> - Ran `Get-Content audit/source/rsna*.py`
+>
+> Searched the web for `site.keras.io api applications resnet preprocess_input efficientnet densenet inceptionv3 ...`
+>
+> </details>
+>
+> The code has several concrete validity problems: image-level random splits, PCA fitted before splitting, checkpoints saved before training, and multilabel predictions collapsed with `argmax`. The desktop classifier also feeds resized pixels into PCA that was trained on CNN features. I’m replacing these execution paths with a shared pipeline and retaining the originals as audit evidence.
+>
+> <details><summary>Created 5 files, ran 3 commands, searched the web</summary>
+>
+> - Ran `Get-Content audit/source/rsnainception.py,audit/source/rsnaresnet50.py,audit/source/rsnavgg.py`
+>
+> - Ran `& 'C:/Users/moham/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' -c "import importlib.util; print({m:bool(importlib.util.find_spec(m)) for m in ['numpy','pandas','sklearn','pytest','tensorflow','pydicom','skimage','h5py']})"`
+>
+> - Ran `& 'C:/Users/moham/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' -m venv --system-site-packages .venv; & ./.venv/Scripts/python.exe -m pip install pytest scikit-learn pydicom scikit-image tensorflow h5py`
+>
+> - Wrote `./.gitignore` (+7 -0)
+> - Wrote `./ich/__init__.py` (+4 -0)
+> - Wrote `./ich/dataset.py` (+115 -0)
+> - Wrote `./ich/preprocessing.py` (+50 -0)
+> - Wrote `./pyproject.toml` (+23 -0)
+>
+> Searched the web for `https://keras.io/api/applications/resnet/`
+>
+> </details>
+>
+> The repaired dataset layer now requires patient, study, series, and image identities, rejects conflicting labels and cross-patient image copies, and creates three patient-disjoint partitions. I’m preserving all five CNNs and both ensembles with their original heads, while correcting their input contracts and adding training-only PCA provenance.
+>
+> <details><summary>Created 7 files</summary>
+>
+> - Wrote `./ich/losses.py` (+29 -0)
+> - Wrote `./ich/metrics.py` (+37 -0)
+> - Wrote `./ich/models.py` (+65 -0)
+> - Wrote `./ich/transforms.py` (+53 -0)
+> - Wrote `./ich/evaluation.py` (+74 -0)
+> - Wrote `./ich/explainability.py` (+23 -0)
+> - Wrote `./ich/training.py` (+96 -0)
+>
+> </details>
+>
+> The shared pipeline now saves trained model bundles with preprocessing settings, label order, split hashes, dependency versions, and artifact checksums. Inference uses the same saved CNN extractor and PCA state. Next I’m testing the leakage guards, model serialization, and training lifecycle using synthetic data; neither archive contains the dataset needed for a real experiment.
+>
+> <details><summary>Created 5 files, edited 3 files, ran 6 commands</summary>
+>
+> - Wrote `./ich/cli.py` (+76 -0)
+> - Wrote `./ich/dataset.py` (+15 -1)
+> - Wrote `./ich/evaluation.py` (+2 -1)
+> - Wrote `./ich/training.py` (+2 -1)
+> - Wrote `./tests/conftest.py` (+34 -0)
+> - Wrote `./tests/test_integrity.py` (+105 -0)
+> - Ran `Get-ChildItem tests -ErrorAction SilentlyContinue; Get-Process python -ErrorAction SilentlyContinue | Select-Object Id,CPU; Test-Path ich/cli.py`
+> - Ran `& ./.venv/Scripts/python.exe -m pytest -q tests/test_integrity.py`
+> - Ran `& ./.venv/Scripts/python.exe -m pip install pytest scikit-learn pydicom scikit-image tensorflow h5py`
+> - Wrote `./tests/test_models.py` (+48 -0)
+> - Wrote `./tests/test_pipeline.py` (+84 -0)
+> - Ran `rg -n 'train_test_split|fit_transform|\.save\(|argmax|zero_division|astype\(np.uint8\)|visualize_volume\(image_3d\)' audit/source 'originals/medical_imaging/Medical Imaging (2)' -g '*.py'`
+> - Ran `& ./.venv/Scripts/python.exe -c "import pathlib,json,hashlib,zipfile; archives=[pathlib.Path('E:/Medical Imaging Paper/From Laiba/CNN Models.zip'),pathlib.Path('E:/Medical Imaging Paper/From Laiba/Medical Imaging (2).zip')]; inventory={'archives':[{ 'path':str(p),'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'entries':zipfile.ZipFile(p).namelist()} for p in archives],'files':[]}; files=sorted(pathlib.Path('originals').rglob('*')); [(inventory['files'].append({'path':str(p),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),**({'code_cells':sum(c['cell_type']=='code' for c in json.loads(p.read_text())['cells'])} if p.suffix=='.ipynb' else {})})) for p in files if p.is_file()]; pathlib.Path('audit/inventory.json').write_text(json.dumps(inventory,indent=2)); print('Inventoried',len(inventory['files']),'original files'); import h5py; h=h5py.File('originals/medical_imaging/Medical Imaging (2)/ensemble_model.h5','r'); print('HDF5 attributes:',list(h.attrs)); config=json.loads(h.attrs['model_config']); pathlib.Path('audit/legacy-model-config.json').write_text(json.dumps(config,indent=2)); print([(x['class_name'],x['config'].get('units'),x['config'].get('batch_shape')) for x in config['config']['layers']]); h.close()"`
+> - Ran `& ./.venv/Scripts/python.exe -c "import pathlib,json,hashlib,zipfile; archives=[pathlib.Path('E:/Medical Imaging Paper/From Laiba/CNN Models.zip'),pathlib.Path('E:/Medical Imaging Paper/From Laiba/Medical Imaging (2).zip')]; inventory={'archives':[{'path':str(p),'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'entries':zipfile.ZipFile(p).namelist()} for p in archives],'files':[]}; files=sorted(pathlib.Path('originals').rglob('*')); [(inventory['files'].append({'path':str(p),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),**({'code_cells':sum(c['cell_type']=='code' for c in json.loads(p.read_text(encoding='utf-8'))['cells'])} if p.suffix=='.ipynb' else {})})) for p in files if p.is_file()]; pathlib.Path('audit/inventory.json').write_text(json.dumps(inventory,indent=2)); print('Inventoried',len(inventory['files']),'original files'); import h5py; h=h5py.File('originals/medical_imaging/Medical Imaging (2)/ensemble_model.h5','r'); config=json.loads(h.attrs['model_config']); pathlib.Path('audit/legacy-model-config.json').write_text(json.dumps(config,indent=2)); print([(x['class_name'],x['config'].get('units'),x['config'].get('batch_shape')) for x in config['config']['layers']]); h.close()"`
+>
+> </details>
+>
+> The first 16 integrity tests pass, covering patient/image overlap, training-only PCA, HU conversion, missing labels, and multilabel metrics. Inspection of the supplied HDF5 configuration also confirms it is a 512-feature PCA classifier head. Its training history remains unverifiable; I’ve preserved it without treating it as a validated model.
+>
+> <details><summary>Created 3 files, ran 2 commands</summary>
+>
+> - Ran `$env:TF_CPP_MIN_LOG_LEVEL='2'; & ./.venv/Scripts/python.exe -m pytest -q --junitxml=audit/test-results.xml`
+> - Wrote `./README.md` (+78 -0)
+> - Wrote `./audit/AUDIT.md` (+66 -0)
+> - Wrote `./originals/README.md` (+4 -0)
+> - Ran `& ./.venv/Scripts/python.exe -m pip freeze | Set-Content -Encoding utf8 requirements-lock.txt; & ./.venv/Scripts/python.exe -m compileall -q ich tests; & ./.venv/Scripts/python.exe -m ich.cli --help`
+>
+> </details>
+>
+> All 32 tests passed, including forward passes through every preserved architecture and synthetic train/save/reload/evaluate checks for both CNN and PCA paths. The run exposed a dataset-cardinality warning that could obscure epoch handling. I’m fixing it and checking multiple epochs before finalizing the validation record.
+>
+> <details><summary>Created 3 files, edited 7 files, explored a file, ran 4 commands</summary>
+>
+> - Wrote `./ich/dataset.py` (+1 -0)
+> - Wrote `./ich/explainability.py` (+1 -4)
+> - Wrote `./ich/training.py` (+1 -1)
+> - Wrote `./ich/transforms.py` (+2 -1)
+> - Wrote `./tests/test_models.py` (+7 -2)
+> - Wrote `./tests/test_pipeline.py` (+3 -3)
+>
+> <details><summary>Explored a file</summary>
+>
+> - Read `./requirements-lock.txt`
+>
+> </details>
+>
+> - Wrote `./.github/workflows/tests.yml` (+14 -0)
+> - Wrote `./audit/lock_environment.py` (+27 -0)
+> - Wrote `./pyproject.toml` (+1 -2)
+>
+> - Ran `& ./.venv/Scripts/python.exe -m pip install --no-deps --no-build-isolation -e .; & ./.venv/Scripts/ich.exe --help`
+>
+> - Ran `& ./.venv/Scripts/python.exe -c "import pathlib,json,hashlib,zipfile; inv=json.loads(pathlib.Path('audit/inventory.json').read_text()); count=0; roots=[pathlib.Path('originals/cnn_models'),pathlib.Path('originals/medical_imaging')]; exec('for item,root in zip(inv[\"archives\"],roots):\n with zipfile.ZipFile(item[\"path\"]) as archive:\n  for entry in archive.infolist():\n   if not entry.is_dir():\n    assert archive.read(entry)==(root/entry.filename).read_bytes(),entry.filename\n    count+=1'); print('Verified original archive files byte-for-byte:',count)"`
+>
+> - Ran `& ./.venv/Scripts/python.exe audit/lock_environment.py; $env:TF_CPP_MIN_LOG_LEVEL='2'; & ./.venv/Scripts/python.exe -m pytest -q --junitxml=audit/test-results.xml`
+>
+> - Wrote `./audit/verify_originals.py` (+28 -0)
+>
+> - Ran `& ./.venv/Scripts/python.exe audit/verify_originals.py`
+>
+> </details>
+>
+> The updated suite passes all 32 tests. Two-epoch training and real-model save/reload checks pass, and all 13 original files match the archives byte for byte. I’m finishing the audit record with the remaining limits: real-data validation, patient-ID review, and all experimental performance estimates still require the dataset.
+>
+> <details><summary>Created a file, ran a command</summary>
+>
+> - Wrote `./audit/VALIDATION.md` (+32 -0)
+> - Ran `& ./.venv/Scripts/python.exe -m compileall -q ich tests; & ./.venv/Scripts/python.exe -m pip check; Get-ChildItem -Force | Select-Object Name`
+>
+> </details>
+</details>
+
+Completed: unpacked both archives, reviewed all code, and built a corrected modular research pipeline.
+
+- Preserved all five CNNs, both ensembles, and original files.
+- Repaired split leakage risks, HU/ImageNet preprocessing, PCA fitting, multilabel evaluation, checkpoint saving, and inference consistency.
+- Added reproducibility records and automated tests: **32 passed**.
+
+[Audit report](<./audit/AUDIT.md>) · [Usage guide](<./README.md>) · [Validation record](<./audit/VALIDATION.md>)
+
+No experimental results were fabricated. Real-data validation and retraining remain necessary; the archives contain no dataset.
+
+> Now those files can I test them through the Kaggle notebook or just in Sypder/Python??
+
+**You can use both Kaggle notebooks and Spyder/Python.** The repaired code is a Python package, so keep the complete folder structure rather than copying individual files.
+
+- **Kaggle:** Upload the repaired repository as a private Kaggle dataset, attach your medical-image dataset, and copy the repository into `/kaggle/working/` before installing and running it. Update the dataset paths to `/kaggle/input/...`.
+- **Spyder/local Python:** Open the workspace and configure Spyder to use its `.venv` Python interpreter. You can import the modules or run the commands in the [usage guide](<./README.md>).
+
+Start with the automated tests:
+```bash
+python -m pytest -q
+```
+
+Then follow **prepare → train → evaluate**. Use the repaired `ich` package; the notebooks under `originals/` retain the historical bugs for audit purposes.
+
+The 32 passing tests check software correctness with synthetic data. Testing actual hemorrhage detection requires your real DICOM images and labels.
+
+> But I don't have the datasets at my Laptop as it's a huge/maassive data to download, so can it still work on Spyder/Python or it's not possible
+
+**Spyder/Python can run the software tests without downloading the dataset, but it cannot train or evaluate the models without access to real images and labels.**
+
+On your laptop, you can:
+
+- Run the 32 automated tests using small synthetic images.
+- Inspect and modify the code.
+- Predict on a few DICOM files **once you have a properly trained model bundle**.
+
+For the full dataset, **running the repaired code in Kaggle is the practical option**. The dataset and computation stay on Kaggle, so you don’t need to download the massive dataset to your laptop. After training, download only the trained model bundle for local inference in Spyder.
+
+The old model files supplied in your ZIPs should not be treated as validated trained models.
+
+> Where exactly I can find the codes to test in Kaggle from the directory?
+
+The repaired code is in:
+
+**[C:\Users\moham\Downloads\Medical Imaging\ich](<./ich>)**
+
+For Kaggle, upload these items together from the **Medical Imaging** directory:
+
+- **`ich/`** — all repaired Python modules.
+- **`tests/`** — automated tests.
+- **`pyproject.toml`** — package installation settings.
+
+The main entry point is [ich/cli.py](<./ich/cli.py>). Keep the entire `ich` folder together; that file depends on the other modules.
+
+The [README.md](<./README.md>) contains the commands for preparing data, training, and evaluation.
+
+**Do not use `originals/` or `audit/source/` for the corrected experiments**—those contain the historical code with the identified problems.
+
+> What to do next?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-bb8e2eef-db72-4910-9c56-362904d6b580.png`
+
+<details><summary>2 previous messages</summary>
+
+> Your screenshot shows the RSNA dataset is already attached. I’ll package the repaired code into a small ZIP so you can upload it alongside the dataset.
+>
+> <details><summary>Ran 2 commands</summary>
+>
+> - Ran `Get-ChildItem ich,tests -File | Select-Object FullName; Get-Content pyproject.toml`
+> - Ran `& ./.venv/Scripts/python.exe -c "from pathlib import Path; from zipfile import ZipFile, ZIP_DEFLATED; files=[*Path('ich').glob('*.py'),*Path('tests').glob('*.py'),Path('pyproject.toml')]; archive=Path('ich-kaggle-code.zip'); z=ZipFile(archive,'w',ZIP_DEFLATED); [z.write(p,p.as_posix()) for p in files]; z.close(); check=ZipFile(archive); assert check.testzip() is None; print(str(archive.resolve())); print(len(check.namelist()),'files;',archive.stat().st_size,'bytes')"`
+>
+> </details>
+</details>
+
+Your **RSNA dataset is already attached correctly**. Next, add the repaired code:
+
+1. Click **Upload** in the right-hand **Input** panel.
+2. Select this ZIP I prepared:
+   **[ich-kaggle-code.zip](<./ich-kaggle-code.zip>)**
+   It is in `C:\Users\moham\Downloads\Medical Imaging`.
+3. If prompted for a dataset name, enter **ich-repaired-code** and keep it **Private**.
+4. Complete the upload and attach it to this notebook if Kaggle prompts you.
+
+**Don’t run the existing cell yet**—it recursively prints every dataset filename, producing a huge output.
+
+Once the uploaded code appears under **Input**, send a screenshot with its folder expanded. I’ll give you the exact setup and test cells using the path shown there.
+
+> Which option I should choose when I click on upload?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-4e2e2995-b35b-4483-9cca-95709e6bc3b2.png`
+
+Choose **New Dataset**.
+
+Then upload **[ich-kaggle-code.zip](<./ich-kaggle-code.zip>)**, name the dataset **ich-repaired-code**, and keep it **Private**.
+
+This uploads the Python code; **New Model** is for trained model artifacts.
+
+> Complete the following
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-0af83055-f4cb-4ff7-bba2-e3919ba9d739.png`
+> - `~/AppData/Local/Temp/codex-clipboard-8bcfa47c-a76a-47e3-9d9b-a8fe086bba0a.png`
+
+You’ve opened **Upload Model**. For this code ZIP, switch to **New Dataset**:
+
+1. Click **×** at the top-left to close this form.
+2. Choose **Upload → New Dataset**.
+3. Upload **ich-kaggle-code.zip** again.
+4. Enter:
+   - **Dataset title:** `ich-repaired-code`
+   - **Visibility:** `Private`
+5. Click **Create**.
+
+You don’t need to select a model framework or variation. Once created, attach the dataset to your notebook using **Add Input** if it isn’t attached automatically.
+
+> How about the name of model and license as I can't create without those in orange
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-88e5a5f1-af92-4d6d-814c-289e05ed700c.png`
+
+Those orange fields are required because you’re still on **Upload Model**, as shown at the top of your screenshot. **Leave them empty and close this form.**
+
+1. Click the **× beside “Upload Model”** at the top-left.
+2. Click **Upload** again.
+3. Select **New Dataset** — the **first option**, above “New Model.”
+4. Upload `ich-kaggle-code.zip`.
+5. Set the dataset name to **ich-repaired-code** and visibility to **Private**.
+
+The correct form will ask for a **dataset title**, without model framework or variation fields. Send a screenshot of that form if you need help completing it.
+
+> What should I name the dtaset title?
+
+Name the dataset **`ich-repaired-code`** and keep its visibility **Private**.
+
+> After that, What should I do?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-5dc960a6-c375-445f-9095-f3b9f11b9117.png`
+
+Both the **RSNA dataset** and **ich-repaired-code** are now attached.
+
+**First, replace all the text in the existing code cell with this:**
+
+```python
+from pathlib import Path
+import importlib.metadata as metadata
+
+# Locate the uploaded code.
+candidates = [
+    Path("/kaggle/input/ich-repaired-code"),
+    Path("/kaggle/input/datasets/mabdulal/ich-repaired-code"),
+]
+
+code_folder = next((p for p in candidates if p.exists()), None)
+
+if code_folder:
+    print("CODE LOCATION:", code_folder)
+    print("\nUploaded files:")
+    for path in sorted(code_folder.rglob("*")):
+        if path.is_file():
+            print(path.relative_to(code_folder))
+else:
+    print("Please expand ich-repaired-code in the Input panel")
+    print("and copy its folder path.")
+
+# Check installed dependencies without changing the environment.
+print("\nInstalled versions:")
+for package in [
+    "tensorflow", "keras", "numpy", "pandas",
+    "pydicom", "scikit-learn", "scikit-image", "pytest"
+]:
+    try:
+        print(f"{package}: {metadata.version(package)}")
+    except metadata.PackageNotFoundError:
+        print(f"{package}: NOT INSTALLED")
+```
+
+Then click the **▶ button beside the cell**, or press **Shift + Enter**.
+
+**Send me the output below the cell.** This identifies the uploaded files and any missing dependencies so I can give you the correct setup and test commands. It won’t train a model or scan the massive image dataset yet.
+
+> Here is the output:
+>
+> CODE LOCATION: /kaggle/input/datasets/mabdulal/ich-repaired-code
+> Uploaded files:
+> ich/**init**.py
+> ich/cli.py
+> ich/dataset.py
+> ich/evaluation.py
+> ich/explainability.py
+> ich/losses.py
+> ich/metrics.py
+> ich/models.py
+> ich/preprocessing.py
+> ich/training.py
+> ich/transforms.py
+> pyproject.toml
+> tests/conftest.py
+> tests/test\_integrity.py
+> tests/test\_models.py
+> tests/test\_pipeline.py
+> Installed versions:
+> tensorflow: 2.20.0
+> keras: 3.13.2
+> numpy: 2.0.2
+> pandas: 2.3.3
+> pydicom: 3.0.2
+> scikit-learn: 1.6.1
+> scikit-image: 0.25.2
+> pytest: 8.4.2
+
+The code was found, and **all required dependencies are installed**. Next, copy the code into Kaggle’s writable folder and run the tests.
+
+Click **+ Code**, paste this cell, and run it:
+
+```python
+from pathlib import Path
+import shutil
+import os
+
+source = Path("/kaggle/input/datasets/mabdulal/ich-repaired-code")
+work = Path("/kaggle/working/ich-research")
+
+work.mkdir(parents=True, exist_ok=True)
+
+for folder in ["ich", "tests"]:
+    shutil.copytree(source / folder, work / folder, dirs_exist_ok=True)
+
+shutil.copy2(source / "pyproject.toml", work / "pyproject.toml")
+
+os.chdir(work)
+
+assert (work / "ich" / "__init__.py").exists(), "Missing __init__.py"
+print("Ready:", work)
+```
+
+Then add **another code cell** and run:
+
+```python
+import subprocess
+import sys
+
+result = subprocess.run(
+    [sys.executable, "-m", "pytest", "-q",
+     "--junitxml=/kaggle/working/test-results.xml"],
+    cwd="/kaggle/working/ich-research",
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+)
+
+print(result.stdout)
+print("Test exit code:", result.returncode)
+```
+
+Wait for it to finish, then send me the output. **Exit code `0` means the tests passed.** These tests use synthetic data; training on the RSNA dataset comes afterward.
+
+> Here is the output from the 1st code:
+>
+> Ready: /kaggle/working/ich-research&#x20;
+>
+> Here is the output from the 2nd code:
+>
+> ................................                                         [100%] =============================== warnings summary =============================== ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:64   /usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one\_of'     prop = Group((name + Suppress("=") + comma\_separated(value)) | oneOf(\_CONSTANTS))  ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85   /usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse\_string'     parse = parser.parseString(pattern)  ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89 ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89   /usr/local/lib/python3.12/dist-packages/matplotlib/\_fontconfig\_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset\_cache'     parser.resetCache()  ../../../usr/local/lib/python3.12/dist-packages/matplotlib/\_mathtext.py:45   /usr/local/lib/python3.12/dist-packages/matplotlib/\_mathtext.py:45: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable\_packrat'     ParserElement.enablePackrat()  -- Docs: [https://docs.pytest.org/en/stable/how-to/capture-warnings.html](https://docs.pytest.org/en/stable/how-to/capture-warnings.html) ------------- generated xml file: /kaggle/working/test-results.xml ------------- 32 passed, 14 warnings in 53.06s  Test exit code: 0
+
+**All 32 tests passed on Kaggle.** The 14 warnings concern deprecated functions in plotting dependencies; they did not cause failures. This confirms the software tests pass—not medical prediction accuracy.
+
+Next, check that the attached **real DICOM images** work with the repaired preprocessing before preparing the full dataset.
+
+Add a new code cell and run:
+
+```python
+from pathlib import Path
+import sys
+import pandas as pd
+import pydicom
+
+sys.path.insert(0, "/kaggle/working/ich-research")
+from ich.preprocessing import dicom_to_hu, window_image
+
+# Locate the RSNA training dataset.
+name = "rsna-intracranial-hemorrhage-detection"
+roots = [
+    Path("/kaggle/input") / name,
+    Path("/kaggle/input/competitions") / name,
+]
+candidates = roots + [root / name for root in roots]
+
+data_dir = next(
+    (p for p in candidates
+     if (p / "stage_2_train.csv").exists()
+     and (p / "stage_2_train").is_dir()),
+    None,
+)
+
+if data_dir is None:
+    raise FileNotFoundError(
+        "Expand the RSNA dataset in Input and send its folder path."
+    )
+
+print("Dataset location:", data_dir)
+
+# Read a small number of label rows and check five distinct images.
+rows = pd.read_csv(data_dir / "stage_2_train.csv", nrows=120)
+image_ids = rows["ID"].str.rsplit("_", n=1).str[0].unique()[:5]
+
+required = [
+    "PatientID", "StudyInstanceUID",
+    "SeriesInstanceUID", "SOPInstanceUID"
+]
+
+for number, image_id in enumerate(image_ids, start=1):
+    ds = pydicom.dcmread(
+        data_dir / "stage_2_train" / f"{image_id}.dcm"
+    )
+    missing = [
+        tag for tag in required
+        if not str(getattr(ds, tag, "")).strip()
+    ]
+    if missing:
+        raise ValueError(f"Image {number}: missing {missing}")
+
+    hu = dicom_to_hu(ds)
+    image = window_image(hu)
+
+    print(
+        f"Image {number}: OK | "
+        f"HU range {hu.min():.1f} to {hu.max():.1f} | "
+        f"processed shape {image.shape}"
+    )
+
+print("Small real-DICOM check completed.")
+```
+
+**Send the output from this cell.** If it succeeds, the next step is creating the patient-disjoint train/validation/test manifest. This check reads only five images and does not download the dataset to your laptop.
+
+> Here is the output:&#x20;
+>
+> Dataset location: /kaggle/input/competitions/rsna-intracranial-hemorrhage-detection/rsna-intracranial-hemorrhage-detection&#x20;
+> /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_6dec708c74'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_1b17a4a944'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_12cadc6af'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg)&#x20;
+> Image 1: OK | HU range -3024.0 to 1742.0 | processed shape (224, 224, 3) Image 2: OK | HU range -3024.0 to 362.0 | processed shape (224, 224, 3) Image 3: OK | HU range -1018.0 to 1496.0 | processed shape (224, 224, 3) Image 4: OK | HU range -3024.0 to 3071.0 | processed shape (224, 224, 3)&#x20;
+> /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_0a9ac70962'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_3f92acee54'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_38fd7baa0'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_45e4c06199'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_5467fe8129'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_6c5d82413'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_0d739f7065'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_e01d9cd8c9'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_aec8e68b3'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_f361229319'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_04b809de14'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_4d9209c7c'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg)&#x20;
+> Image 5: OK | HU range -1024.0 to 1059.0 | processed shape (224, 224, 3) Small real-DICOM check completed.
+
+<details><summary>2 previous messages</summary>
+
+> All five images loaded successfully. I’ll check the UID warning and the HU-range issue before moving on to the full dataset preparation.
+>
+> <details><summary>Explored a file, searched the web</summary>
+>
+> Searched the web for `https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1`
+>
+> <details><summary>Explored a file</summary>
+>
+> - Read `./ich/preprocessing.py`
+>
+> </details>
+>
+> </details>
+</details>
+
+**All five images loaded and were converted to the expected shape.** Two points need distinguishing:
+
+- The warnings concern identifiers such as `ID_6dec708c74`. DICOM UIDs require numeric components separated by dots, so those strings trigger a format warning. Keep the identifiers unchanged for grouping and leakage checks. [DICOM UID rules](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#sect_9.1)
+- The **−3024 HU minimum needs inspection**. The range alone cannot tell us whether it comes from background values or an encoding problem. Successfully loading an image does not prove its preprocessing is correct.
+
+Before starting the full dataset preparation, add this cell. It checks the same five images’ pixel metadata:
+
+```python
+import numpy as np
+import pandas as pd
+import pydicom
+
+records = []
+
+for number, image_id in enumerate(image_ids, start=1):
+    ds = pydicom.dcmread(
+        data_dir / "stage_2_train" / f"{image_id}.dcm"
+    )
+    pixels = ds.pixel_array
+    hu = dicom_to_hu(ds)
+
+    records.append({
+        "image": number,
+        "pixel_dtype": str(pixels.dtype),
+        "signed_pixels": int(ds.PixelRepresentation),
+        "bits_stored": int(ds.BitsStored),
+        "slope": float(ds.RescaleSlope),
+        "intercept": float(ds.RescaleIntercept),
+        "padding_value": str(
+            getattr(ds, "PixelPaddingValue", "absent")
+        ),
+        "padding_limit": str(
+            getattr(ds, "PixelPaddingRangeLimit", "absent")
+        ),
+        "raw_min": int(pixels.min()),
+        "raw_max": int(pixels.max()),
+        "HU_min": float(hu.min()),
+        "HU_max": float(hu.max()),
+        "percent_below_minus_1100": round(
+            float(np.mean(hu < -1100) * 100), 2
+        ),
+    })
+
+print(pd.DataFrame(records).to_string(index=False))
+```
+
+Send the resulting table. **Don’t change the rescale values or remove the low-valued pixels yet**; this check will help establish what they represent.
+
+> Here is the output:
+>
+> image pixel\_dtype  signed\_pixels  bits\_stored  slope  intercept padding\_value padding\_limit  raw\_min  raw\_max  HU\_min  HU\_max  percent\_below\_minus\_1100      1       int16              1           16    1.0    -1024.0        absent        absent    -2000     2766 -3024.0  1742.0                     21.28      2       int16              1           16    1.0    -1024.0        absent        absent    -2000     1386 -3024.0   362.0                     21.28      3      uint16              0           12    1.0    -1024.0        absent        absent        6     2520 -1018.0  1496.0                      0.00      4       int16              1           16    1.0    -1024.0        absent        absent    -2000     4095 -3024.0  3071.0                     21.28      5      uint16              0           12    1.0    -1024.0        absent        absent        0     2083 -1024.0  1059.0                      0.00
+
+The HU arithmetic is correct for these five images: **−2000 − 1024 = −3024**. The identical 21.28% fraction in images 1, 2, and 4 suggests a shared background-fill pattern, although the table alone cannot prove that.
+
+**Keep the preprocessing unchanged.** Its fixed windows already map these very low values to black; there is no need to alter the DICOM pixels or intercept.
+
+Next, create the **patient-disjoint train/validation/test manifest**. This scans the full training dataset, so it can take considerable time. It runs on Kaggle without downloading images to your laptop.
+
+Add a new cell and run:
+
+```python
+from pathlib import Path
+import subprocess
+import sys
+import os
+
+project = Path("/kaggle/working/ich-research")
+manifest = Path("/kaggle/working/rsna-manifest.csv")
+log_path = Path("/kaggle/working/prepare-manifest.log")
+
+command = [
+    sys.executable, "-u", "-m", "ich.cli", "prepare",
+    "--labels", str(data_dir / "stage_2_train.csv"),
+    "--dicoms", str(data_dir / "stage_2_train"),
+    "--output", str(manifest),
+    "--seed", "42",
+]
+
+print("Preparing the manifest. Keep this cell running.", flush=True)
+print("Detailed warnings and errors are saved to:", log_path, flush=True)
+
+# Write output to disk rather than flooding the notebook with UID warnings.
+with log_path.open("w") as log:
+    result = subprocess.run(
+        command,
+        cwd=project,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+    )
+
+print("Exit code:", result.returncode)
+
+# Show only the end of the log.
+with log_path.open("rb") as log:
+    log.seek(max(0, os.path.getsize(log_path) - 6000))
+    print(log.read().decode("utf-8", errors="replace"))
+
+if result.returncode == 0:
+    print("Manifest created:", manifest)
+else:
+    print("Preparation stopped. Send the output above before proceeding.")
+```
+
+The preparation deliberately stops if it finds conflicting labels, missing identities, or duplicate-image problems. **Do not bypass those checks.** Send the output when the cell finishes; training comes after the manifest passes validation.
+
+> this code work using CPU can we change from CPU to GPU to be faster since when you provide this code ad only 70MiB/19.5GiB?
+
+<details><summary>2 previous messages</summary>
+
+> I’ll check which parts of this preparation step can use a GPU and what the usage figure tells us.
+>
+> <details><summary>Ran a command, searched the web</summary>
+>
+> - Ran `Get-Content ich/dataset.py | Select-Object -First 85`
+>
+> Searched the web for `site.tensorflow.org guide gpu TensorFlow automatically GPU operations`
+>
+> </details>
+</details>
+
+**A GPU can speed up model training, but switching it on won’t accelerate this manifest-preparation code.**
+
+The current step reads DICOM files, checks patient identities, converts pixels to HU, and calculates image hashes. These operations use the **CPU and file storage**, processing images individually.
+
+**“70 MiB / 19.5 GiB” is a capacity-usage figure, not a progress indicator.** Without its label, I can’t tell whether it refers to RAM, GPU memory, or disk space. Low usage does not mean the scan has stopped.
+
+For now:
+
+- **Keep the current preparation running on CPU.**
+- Use a GPU for the subsequent CNN training and feature extraction. TensorFlow can automatically place supported operations on an available GPU. [TensorFlow GPU guide](https://www.tensorflow.org/guide/gpu)
+
+My preparation code also hides progress until completion—that’s a visibility limitation. Making this scan faster would require parallel CPU processing; a progress counter and resumable checkpoints would make a long scan easier to manage.
+
+> Here is the output from the last code you provided to me:
+>
+> User context
+>
+> Attachments:
+> - Preparing the manifest. Keep this cell running. Detailed warnings and errors ar…: `~/.codex/attachments/10ad5f92-32ec-4fcd-9a85-2916513cb7b6/pasted-text.txt`
+
+<details><summary>2 previous messages</summary>
+
+> I’ll read the output to check whether manifest preparation completed or stopped on a validation error.
+>
+> <details><summary>Explored a file</summary>
+>
+> - Read `~/.codex/attachments/10ad5f92-32ec-4fcd-9a85-2916513cb7b6/pasted-text.txt`
+>
+> </details>
+</details>
+
+**The scan stopped because an image’s pixel data could not be decoded.** It expected **524,288 bytes** but found **153,710 bytes**. This is separate from the UID warnings and is not a CPU/GPU problem.
+
+The file could be truncated, or its metadata could describe the pixels incorrectly. **Don’t rerun the full scan or skip the image yet.**
+
+My earlier scanner did not include the filename in the error. The last identifier printed was `ID_6431af929`; let’s check whether its corresponding file reproduces the failure.
+
+Add a new cell and run:
+
+```python
+from pathlib import Path
+import pydicom
+
+folder = Path(
+    "/kaggle/input/competitions/"
+    "rsna-intracranial-hemorrhage-detection/"
+    "rsna-intracranial-hemorrhage-detection/stage_2_train"
+)
+path = folder / "ID_6431af929.dcm"
+
+if not path.exists():
+    print("Candidate file not found; its identity is not confirmed.")
+else:
+    print("Checking:", path.name)
+    print("File size:", path.stat().st_size, "bytes")
+
+    ds = pydicom.dcmread(path)
+
+    for tag in [
+        "Rows", "Columns", "NumberOfFrames",
+        "SamplesPerPixel", "BitsAllocated", "BitsStored",
+        "PixelRepresentation", "PhotometricInterpretation",
+        "RescaleSlope", "RescaleIntercept"
+    ]:
+        print(f"{tag}: {getattr(ds, tag, 'absent')}")
+
+    print(
+        "TransferSyntaxUID:",
+        getattr(ds.file_meta, "TransferSyntaxUID", "absent")
+    )
+    print("PixelData bytes:", len(ds.get("PixelData", b"")))
+
+    try:
+        pixels = ds.pixel_array
+        print("Decoding succeeded:", pixels.shape, pixels.dtype)
+        print("This candidate did not reproduce the failure.")
+    except Exception as error:
+        print("DECODING FAILED:", type(error).__name__, str(error))
+```
+
+Send that output. If corruption is confirmed, we’ll record an explicit exclusion with its reason and make preparation resumable, while retaining all patient/image leakage checks.
+
+> Checking: ID\_6431af929.dcm File size: 154410 bytes Rows: 512 Columns: 512 NumberOfFrames: absent SamplesPerPixel: 1 BitsAllocated: 16 BitsStored: 16 PixelRepresentation: 1 PhotometricInterpretation: MONOCHROME2 RescaleSlope: 1 RescaleIntercept: -1024 TransferSyntaxUID: 1.2.840.10008.1.2.1 PixelData bytes: 153710 DECODING FAILED: ValueError The number of bytes of pixel data is less than expected (153710 vs 524288 bytes) - the dataset may be corrupted, have an invalid group 0028 element value, or the transfer syntax may be incorrect
+
+<details><summary>4 previous messages</summary>
+
+> That confirms the failing file: its pixel payload is shorter than its declared image dimensions require. I’ll add a recorded exclusion for this file and make preparation resumable with progress reporting. Any other unreadable files will be reported for review, rather than silently dropped.
+>
+> <details><summary>Created 2 files, edited a file, ran 2 commands</summary>
+>
+> - Ran `Get-Content ich/dataset.py | Select-Object -Last 45; Get-Content ich/cli.py | Select-Object -First 65`
+> - Wrote `./ich/manifest_scan.py` (+152 -0)
+> - Wrote `./ich/manifest_scan.py` (+1 -3)
+> - Wrote `./tests/test_manifest_scan.py` (+98 -0)
+> - Ran `& ./.venv/Scripts/python.exe -m pytest -q tests/test_manifest_scan.py`
+>
+> </details>
+>
+> The new scanner records the excluded file’s checksum and decoding error, saves progress every 100 images, and prints a progress update every 1,000. I’m testing interruption and resume behavior before giving you the Kaggle replacement cell.
+>
+> <details><summary>Created a file, edited 2 files, ran a command</summary>
+>
+> - Wrote `./audit/make_kaggle_resume_cell.py` (+39 -0)
+> - Ran `& ./.venv/Scripts/python.exe audit/make_kaggle_resume_cell.py; & ./.venv/Scripts/python.exe -m compileall -q ich/manifest_scan.py tests/test_manifest_scan.py`
+> - Wrote `./README.md` (+8 -1)
+> - Wrote `./audit/VALIDATION.md` (+6 -0)
+>
+> </details>
+</details>
+
+**The failing file is confirmed: `ID_6431af929.dcm`.** We’ll exclude this unreadable image with a recorded reason and checksum. Other image errors will still require review.
+
+I prepared a replacement scanner with **progress reporting and resumable checkpoints**. Its four new tests passed.
+
+1. Open **[kaggle-resume-manifest.txt](<./kaggle-resume-manifest.txt>)**.
+2. Copy its **entire contents**.
+3. Paste into **one new Kaggle code cell** and run it. No new dataset upload is needed.
+
+It will:
+
+- Save progress every **100 images**.
+- Display progress every **1,000 images**.
+- Record exclusions and warnings.
+- Preserve all patient/image leakage checks.
+
+**This first replacement run must start from the beginning** because the earlier scan saved no checkpoints. Later reruns can resume while `/kaggle/working/rsna-manifest-checkpoint/` remains available.
+
+Send the final output—or any error it reports.
+
+> It's still running, and I want to put my laptop as sleep, what should I do to pause the code and continue later on?
+
+<details><summary>2 previous messages</summary>
+
+> I’ll check how to preserve the Kaggle session’s checkpoint so you can resume safely after putting your laptop to sleep.
+>
+> <details><summary>Searched the web</summary>
+>
+> Searched the web for `site.kaggle.com/docs notebooks persistence files session save version quick save outputs ...`
+>
+> </details>
+</details>
+
+**Yes—you can stop now and resume from the checkpoint later.** Before sleeping your laptop, preserve the checkpoint:
+
+1. **Interrupt the running cell** using its **■ stop button**. Wait until it stops. A `KeyboardInterrupt` message is expected. **Do not shut down the session yet.**
+
+2. Add a new cell and run this to make a downloadable backup:
+
+```python
+from pathlib import Path
+import shutil
+import os
+from IPython.display import FileLink, display
+
+checkpoint = Path("/kaggle/working/rsna-manifest-checkpoint")
+assert (checkpoint / "scan.sqlite").exists(), "Checkpoint not found"
+
+shutil.make_archive(
+    "/kaggle/working/rsna-checkpoint-backup",
+    "zip",
+    root_dir=checkpoint.parent,
+    base_dir=checkpoint.name,
+)
+
+os.chdir("/kaggle/working")
+display(FileLink("rsna-checkpoint-backup.zip"))
+```
+
+3. **Click the generated link and download the ZIP to your laptop.** This contains scan progress, not the massive image dataset. If the link doesn’t work, find the ZIP under Kaggle’s **Output** panel and download it there.
+
+4. Save your notebook using **Save Version → Quick Save**. Avoid **Save & Run All** for this pause: it starts a separate execution from the beginning. [Kaggle documentation](https://www.kaggle.com/docs/notebooks)
+
+**Once the ZIP has downloaded and the notebook is saved, you can sleep your laptop.**
+
+When you return:
+
+- If `/kaggle/working/rsna-manifest-checkpoint/` still exists, rerun the **replacement resumable-scanner cell**.
+- If it has disappeared, restore the downloaded ZIP into `/kaggle/working/` first.
+
+It will reuse the completed records. Don’t rerun the older, non-resumable preparation cell.
+
+> Here is a ss, what should I do exactly?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-edfbde3d-b8e7-48e1-8458-0674578569d3.png`
+
+You’ve checked **474,000 of 752,803 images—about 63%**. To pause and keep that progress:
+
+1. Click **■ Cancel Run** in the **top toolbar**, beside the grey play button. **Do not click the power icon** near “Draft Session.”
+2. Wait until the cell stops. A `KeyboardInterrupt` message is expected.
+3. Click **+ Code** directly below the output.
+4. Paste this code and run the new cell:
+
+```python
+from pathlib import Path
+import shutil
+import os
+from IPython.display import FileLink, display
+
+checkpoint = Path("/kaggle/working/rsna-manifest-checkpoint")
+assert (checkpoint / "scan.sqlite").exists(), "Checkpoint not found"
+
+shutil.make_archive(
+    "/kaggle/working/rsna-checkpoint-backup",
+    "zip",
+    root_dir=checkpoint.parent,
+    base_dir=checkpoint.name,
+)
+
+os.chdir("/kaggle/working")
+display(FileLink("rsna-checkpoint-backup.zip"))
+```
+
+5. Click the resulting **rsna-checkpoint-backup.zip** link and **wait for the download to finish**. If needed, expand `/kaggle/working` in the right-hand **Output** panel, refresh it, and download the ZIP there.
+6. Click **Save Version** at the top-right and choose **Quick Save**, without rerunning the notebook.
+
+**Once the ZIP is downloaded and the notebook is saved, you can put your laptop to sleep.** Keep that ZIP: it contains the checkpoint needed to resume if Kaggle clears the session files.
+
+> what I should do to continue from where #I stopped?
+
+First, reopen the **same Kaggle notebook**. **Don’t click Run All.**
+
+Add a new code cell and run this to check whether your saved progress is still there:
+
+```python
+from pathlib import Path
+import sqlite3
+
+checkpoint = Path(
+    "/kaggle/working/rsna-manifest-checkpoint/scan.sqlite"
+)
+
+if checkpoint.exists():
+    with sqlite3.connect(
+        checkpoint.as_uri() + "?mode=ro", uri=True
+    ) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM images"
+        ).fetchone()[0]
+
+    print(f"Checkpoint found: {count:,} image records saved.")
+else:
+    print("Checkpoint missing. Restore rsna-checkpoint-backup.zip first.")
+```
+
+**If it says “Checkpoint found”:**
+
+Run only the **long replacement scanner cell** that you copied from `kaggle-resume-manifest.txt`. It includes `prepare_resumable(...)`.
+
+It will check earlier records and display an increasing **`cached`** count, then read the remaining images. Starting its counter at zero does **not** mean it is decoding everything again.
+
+**If it says “Checkpoint missing”:**
+
+Upload your downloaded **`rsna-checkpoint-backup.zip`** through **Upload → New Dataset**, name it **`ich-checkpoint-backup`**, keep it **Private**, and attach it to this notebook. Then send me a screenshot with that input expanded so I can give you the exact restoration command.
+
+**Do not run the old `ich.cli prepare` cell**—that version does not resume.
+
+> Checkpoint missing. Restore rsna-checkpoint-backup.zip first.&#x20;
+
+Your Kaggle session no longer has the checkpoint, so restore it from the ZIP you downloaded.
+
+1. Find **`rsna-checkpoint-backup.zip`** in your laptop’s **Downloads** folder.
+2. In Kaggle’s right-hand panel, click **Upload → New Dataset**.
+3. Upload that ZIP.
+4. Set the dataset title to **`ich-checkpoint-backup`** and visibility to **Private**.
+5. Click **Create**. If it isn’t attached automatically, use **Add Input** to attach it.
+6. Expand **ich-checkpoint-backup** in the Input panel and send me a screenshot showing its files.
+
+Then I’ll give you the exact restoration cell. **Don’t restart the scan yet.**
+
+If you cannot find the ZIP, tell me—we’ll check whether your saved notebook version retained the checkpoint.
+
+> This is the file that I saved from the last time, I want you to tell me what should I do to continue from here.
+> Last time we tried this but it didn't work, so now what should I do?
+>
+> User context
+>
+> Attachments:
+> - stage_2_sample_submission.csv.zip: `~/Downloads/stage_2_sample_submission.csv.zip`
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-5ab07187-4a9b-42aa-acae-31e20beeed6d.png`
+
+<details><summary>2 previous messages</summary>
+
+> I’ll inspect the ZIP you saved and check your Downloads folder for the checkpoint backup. That will tell us whether the earlier scan can be recovered.
+>
+> <details><summary>Ran 3 commands, searched the web</summary>
+>
+> - Ran `Get-ChildItem -LiteralPath 'C:/Users/moham/Downloads' -File | Where-Object { $_.Name -match 'checkpoint|manifest|sqlite|submission|notebook|ich' } | Select-Object Name,Length,LastWriteTime; & ./.venv/Scripts/python.exe -c "import zipfile; p='C:/Users/moham/Downloads/stage_2_sample_submission.csv.zip'; z=zipfile.ZipFile(p); print('ARCHIVE CONTENTS:'); print([(i.filename,i.file_size) for i in z.infolist()]); name=next((n for n in z.namelist() if n.endswith('.csv')),None); f=z.open(name) if name else None; print('FIRST ROWS:'); print([f.readline().decode('utf-8').strip() for _ in range(5)] if f else 'No CSV')"`
+>
+> - Ran `rg --files 'C:/Users/moham/Downloads' 'C:/Users/moham/Desktop' 'C:/Users/moham/Documents' -g '*checkpoint*' -g '*.sqlite' -g '*manifest*' -g '!node_modules/**' -g '!.venv/**'`
+>
+> Searched the web for `site.kaggle.com docs notebooks output files saved version quick save`
+>
+> - Ran `& ./.venv/Scripts/python.exe -c "from pathlib import Path; import zipfile,sqlite3,json; p=Path('rsna-checkpoint-backup.zip'); z=zipfile.ZipFile(p); print('BACKUP:',p.resolve()); print('ZIP bytes:',p.stat().st_size); print('Entries:',[(i.filename,i.file_size) for i in z.infolist()]); names=[n for n in z.namelist() if n.endswith('/scan.sqlite') or n=='scan.sqlite']; assert len(names)==1; dest=Path('audit/recovered-checkpoint'); dest.mkdir(exist_ok=True); db=dest/'scan.sqlite'; db.write_bytes(z.read(names[0])); con=sqlite3.connect(db.resolve().as_uri()+'?mode=ro',uri=True); print('Integrity:',con.execute('PRAGMA quick_check').fetchone()[0]); print('Saved records:',con.execute('SELECT COUNT(*) FROM images').fetchone()[0]); print('Contract:',con.execute('SELECT value FROM config').fetchone()[0]); con.close()"`
+>
+> </details>
+</details>
+
+**I found your actual checkpoint backup—you haven’t lost the saved scan records.** It contains **478,050 image records**, and its database integrity check passed.
+
+The file you attached, `stage_2_sample_submission.csv.zip`, contains a submission CSV, so it cannot restore scan progress.
+
+Use this file instead:
+
+**[rsna-checkpoint-backup.zip](<./rsna-checkpoint-backup.zip>)**
+Location: `C:\Users\moham\Downloads\Medical Imaging\rsna-checkpoint-backup.zip`
+
+In Kaggle:
+
+1. Click **Upload → New Dataset**.
+2. Select the checkpoint ZIP linked above—approximately **51 MB**.
+3. Name the dataset **`ich-checkpoint-backup`** and keep it **Private**.
+4. Click **Create**, then attach it through **Add Input** if necessary.
+5. Expand **ich-checkpoint-backup** in the Input panel and send me a screenshot.
+
+I’ll then give you the restoration command for its exact path. **Don’t restart the full scan.** The missing-checkpoint message means the backup hasn’t been restored into the current Kaggle session yet.
+
+> Now, what?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-d07c3414-5c2a-455b-aff1-8d300383844e.png`
+
+Your **Checkpoint-backup** dataset is now attached. Next, copy its saved database into Kaggle’s working folder.
+
+**Add a new code cell, paste this, and run it:**
+
+```python
+from pathlib import Path
+import shutil
+import sqlite3
+
+# Locate the uploaded checkpoint dataset.
+roots = [
+    Path("/kaggle/input/datasets/mabdulal/checkpoint-backup"),
+    Path("/kaggle/input/checkpoint-backup"),
+    Path("/kaggle/input/datasets/mabdulal/ich-checkpoint-backup"),
+    Path("/kaggle/input/ich-checkpoint-backup"),
+]
+
+matches = [
+    file
+    for root in roots if root.exists()
+    for file in root.rglob("scan.sqlite")
+]
+
+assert len(matches) == 1, (
+    "Could not identify one checkpoint database. "
+    "Expand Checkpoint-backup in Input and send a screenshot."
+)
+
+source = matches[0]
+destination = Path(
+    "/kaggle/working/rsna-manifest-checkpoint/scan.sqlite"
+)
+
+def check_database(path):
+    with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as db:
+        assert db.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        return db.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+
+# Verify the backup before restoring it.
+print(f"Backup contains {check_database(source):,} records.")
+
+if destination.exists():
+    print("Keeping the existing working checkpoint to protect progress.")
+else:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    print("Checkpoint restored.")
+
+print(f"Ready to resume: {check_database(destination):,} saved records.")
+```
+
+You should see **478,050 saved records**, unless a working checkpoint already contains more.
+
+**After restoration succeeds**, run only the **long replacement scanner cell** copied from [kaggle-resume-manifest.txt](<./kaggle-resume-manifest.txt>). It restores the Python code folder if needed.
+
+Watch for an increasing **`cached`** count as it checks previous records. **Do not click Run All or run the old preparation cell.** If restoration or resuming produces an error, send that output before proceeding.
+
+> After the atatched image, I cope-paste the code in the attachement but I reailise that gave me this in another image attached, is that true and normal?
+>
+> User context
+>
+> Attachments:
+> - # Paste this entire file into ONE new Kaggle code cell and run it. from pathlib…: `~/.codex/attachments/ac95ba42-972d-419a-806d-91849a182e92/pasted-text.txt`
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-c2f1aaef-1cab-49ad-abcf-7352a5407909.png`
+> - `~/AppData/Local/Temp/codex-clipboard-a0f399bb-26f2-452d-8ee8-74e7e09bd734.png`
+
+**Yes—this is normal. Your scan is resuming correctly.**
+
+The output shows:
+
+- **`20,000 checked`**: it has checked the first 20,000 entries.
+- **`20,000 cached`**: all were reused from your saved checkpoint.
+- **`0 read`**: none required decoding the DICOM image again.
+
+It must check the saved entries before reaching the unfinished portion. After approximately **478,050 cached records**, the **`read`** count should start increasing as it processes the remaining **274,753 images**.
+
+**Leave this cell running.** You have not lost your saved progress or restarted the image processing from scratch. Send the final output when it finishes, or any error that appears.
+
+> I lost the internet connection for a few mins, what should I do now?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-d0cca01a-42ce-415a-9d7a-e1b508ec190c.png`
+
+**Don’t restart or cancel the scan yet.** Your screenshot shows **557,000 images checked**, a green session indicator, and **Cancel Run**—but the display may be stale after the connection loss.
+
+1. Reconnect your internet and leave this notebook open.
+2. Wait **1–2 minutes** and watch whether the count increases beyond **557,000**.
+3. If it increases, **leave it running**.
+4. If it stays unchanged, open the **same notebook URL in a second browser tab** to check its current status. Keep the original tab open and don’t start another run.
+
+**“Failed to save draft” concerns saving the notebook; it does not by itself mean the scan failed.** The scanner separately checkpoints progress every 100 images.
+
+If the session has stopped, send its current status or error. **Don’t restore the older ZIP over the working checkpoint**—the current checkpoint may contain your newer progress.
+
+> the output is increasing (MiB) but not the checked one, what should I do now
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-108bd10b-002e-4a09-b895-0f52a3543652.png`
+
+**The growing output size suggests the scan is still writing files, while the displayed progress may be stuck after the disconnection.** It does not confirm the current image count.
+
+Do this now:
+
+1. **Keep this tab open.**
+2. Copy the notebook URL and open it in a **new browser tab**.
+3. Wait for it to reconnect, then check the running cell’s latest output. **Do not click Run All or start another scan.**
+
+If the new tab also shows **557,000 checked**, expand **Output → `/kaggle/working` → `rsna-manifest-checkpoint`** and check whether `scan.sqlite` keeps growing when you refresh the **Output panel**.
+
+**If `scan.sqlite` is growing, leave the scan running.** That is stronger evidence that checkpoint records are being added despite the frozen text.
+
+Send a screenshot of the new tab if it still looks stuck. Avoid **Cancel Run**, the power button, and the session restart button for now.
+
+> here is the new tab
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-f847984c-100a-4445-a187-c870c70994e1.png`
+
+The new tab shows **“Draft Session Starting”** in yellow. The visible output may be saved text; it doesn’t confirm that the scan is currently running.
+
+1. **Wait 2–3 minutes** for the session status to settle. Don’t click Run All, restart, or restore the backup.
+2. If the status becomes green and **Cancel Run** appears, leave the scan running.
+3. If it becomes ready but **no cell is running**, add a new cell and run this read-only check:
+
+```python
+from pathlib import Path
+import sqlite3
+
+path = Path("/kaggle/working/rsna-manifest-checkpoint/scan.sqlite")
+
+if path.exists():
+    with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as db:
+        count = db.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+    print(f"Current checkpoint: {count:,} saved records")
+else:
+    print("Working checkpoint is missing")
+```
+
+**Send the result before restarting the scanner.** We need to preserve any checkpoint newer than your **478,050-record backup**.
+
+If “Draft Session Starting” remains for more than five minutes, tell me rather than clicking the restart or power buttons.
+
+> is this right?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-c3742c4c-0698-4e73-94ee-fe8e254403c3.png`
+
+**Yes, you pasted the correct code.** It only reads the checkpoint; it won’t overwrite your progress.
+
+However, Kaggle still shows **“Draft Session Starting”**, so the cell may be waiting for the session.
+
+- Leave this single check queued; don’t click Run again.
+- Once the session is ready, it should print the saved-record count or “Working checkpoint is missing.”
+- Send that output.
+
+**If “Draft Session Starting” has already lasted more than five minutes, tell me how long.** Don’t restart the session or restore the older backup yet.
+
+> yes it has been more than 5 mins
+
+<details><summary>2 previous messages</summary>
+
+> I’ll check Kaggle’s session guidance. The next step is to reconnect the browser without restarting the runtime or overwriting your checkpoint.
+>
+> <details><summary>Searched the web</summary>
+>
+> Searched the web for `site.kaggle.com "Draft Session Starting" ...`
+>
+> </details>
+</details>
+
+**Refresh the browser page once now.** Your screenshot says **“Draft saved”**, so the notebook code has been saved.
+
+1. Press **Ctrl + R** in Chrome. Use the browser refresh—not Kaggle’s restart or power buttons.
+2. Keep that tab active and wait **1–2 minutes**.
+3. If the session becomes ready and no scan is running, run the **checkpoint-count cell once** and send its output.
+4. If it still says **“Draft Session Starting,”** try the same notebook in another browser, such as Edge. Don’t start another scan there.
+
+A stuck starting indicator can involve the browser’s connection to Kaggle, so it doesn’t establish whether the checkpoint has been lost. [Kaggle discussion](https://www.kaggle.com/product-feedback/169285)
+
+**Do not restore the older backup yet.** Your current working checkpoint may contain more progress; the verified **478,050-record backup** remains available as a fallback.
+
+> is it the new tab or the old one?
+
+Refresh the **new tab**—the one showing **“Draft saved”** and your checkpoint-count cell.
+
+Press **Ctrl + R** once, then keep that tab active. Leave the old tab alone for now.
+
+> still the same after 4 mins of pressing ctrl + R
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-27e273d1-246a-429a-92b9-d296a3040761.png`
+
+**Refreshing hasn’t resolved it. Try Microsoft Edge next to check whether this is a Chrome connection issue.**
+
+1. Open **Microsoft Edge**.
+2. Paste this [same notebook URL](https://www.kaggle.com/code/mabdulal/notebook1c395a36d1/edit).
+3. Sign into the **same Kaggle account**, if prompted.
+4. Keep the page active for **1–2 minutes**. Don’t click **Run All** or start another scan.
+
+If Edge connects and no scan is running, run the **checkpoint-count cell once**. If it also remains on **“Draft Session Starting,”** tell me—we’ll move to session recovery rather than repeating refreshes.
+
+Leave the Chrome tabs untouched for now. **Your verified 478,050-record backup is safe; the newer progress still needs checking.**
+
+> got this from microsoft edge
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-ac409751-8de3-4a3e-8e57-0e2da1e42461.png`
+
+Edge shows **“We can’t find that page.”** This does **not** prove the notebook was deleted. Edge may not be signed into the account that owns your private notebook.
+
+1. Open [Kaggle](https://www.kaggle.com/) in Edge.
+2. Sign in using the **same Kaggle account as Chrome**, with username **`mabdulal`**.
+3. Then open this exact **editor link**:
+   [Open your notebook](https://www.kaggle.com/code/mabdulal/notebook1c395a36d1/edit)
+
+Your screenshot’s address is missing the final **`/edit`**.
+
+Leave the Chrome tabs untouched. If Edge still shows “page not found” after signing into the correct account, tell me before changing or restarting anything.
+
+> I got this
+> [https://www.kaggle.com/code/mabdulal/notebook1c395a36d1/edit](https://www.kaggle.com/code/mabdulal/notebook1c395a36d1/edit)
+
+That is the **correct editor link**.
+
+What appears when you open it in Edge: **the notebook**, **“Draft Session Starting,”** or **“We can’t find that page”**?
+
+Send a screenshot of the page so I can identify the next step. Don’t click **Run All** or restart the session yet.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-6beac6bf-b1c5-473f-8c45-2f2c731074a8.png`
+
+Edge opens the notebook, but **the session is still stuck starting in both browsers**. Further browser refreshes are unlikely to help.
+
+Before restarting the session, try to recover the newer checkpoint:
+
+1. In the right-hand **Output** panel, click the small arrow beside **`/kaggle/working`**.
+2. If it opens, expand **`rsna-manifest-checkpoint`**.
+3. If **`scan.sqlite`** appears, use its download option and save it as **`scan-latest.sqlite`**. Keep your older ZIP too.
+
+**Send a screenshot of the expanded Output folder—or tell me if it won’t open.** This checks whether we can recover the newer progress without needing a code cell to run.
+
+Your **478,050-record backup is verified and available**, but I cannot yet confirm whether the later records survived.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-c1c0b59b-1315-4e99-9a9c-bc4ee629c319.png`
+
+The expanded `/kaggle/working` folder shows **no files**. While the session is stuck, that doesn’t prove they were deleted, but we cannot recover a newer checkpoint through this panel.
+
+**We should now try restarting the stuck session:**
+
+1. Open the **Run** menu at the top of the notebook.
+2. Choose **Restart session**, if available.
+3. If a confirmation appears, check whether it warns about deleting files. **Do not choose “Factory reset” or any option that explicitly deletes files.**
+4. Once the session becomes ready, run only the **checkpoint-count cell** already in your notebook.
+
+A restart may interrupt any surviving scan. We have your verified **478,050-record backup**, but progress beyond it is not yet secured.
+
+If **Restart session** is unavailable, send a screenshot of the **Run** menu. Don’t click **Run All**.
+
+> this is from the original
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-fc3bc17c-5a4c-47ca-adc5-2fc24850fbe9.png`
+
+**This changes the next step: your original tab can still see the checkpoint folder, and its output size has grown. Do not restart the session.** My earlier restart suggestion should be put aside.
+
+Use **this original Chrome tab** to secure the newer checkpoint:
+
+1. Click **■ Cancel Run** once.
+2. Wait until the cell stops. A `KeyboardInterrupt` is expected.
+3. Once you can run another cell, click **+ Code** and run this:
+
+```python
+from pathlib import Path
+import sqlite3
+import tempfile
+import zipfile
+import os
+from IPython.display import FileLink, display
+
+source = Path("/kaggle/working/rsna-manifest-checkpoint/scan.sqlite")
+archive = Path("/kaggle/working/rsna-checkpoint-latest.zip")
+assert source.exists(), "Checkpoint not accessible"
+
+# Make a consistent database snapshot before packaging it.
+with tempfile.TemporaryDirectory() as temporary:
+    snapshot = Path(temporary) / "scan.sqlite"
+    src = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)
+    dst = sqlite3.connect(snapshot)
+    try:
+        src.backup(dst)
+        count = dst.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+        assert dst.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+    finally:
+        dst.close()
+        src.close()
+
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(snapshot, "rsna-manifest-checkpoint/scan.sqlite")
+
+print(f"Backup verified: {count:,} saved records")
+os.chdir("/kaggle/working")
+display(FileLink(archive.name))
+```
+
+4. **Download `rsna-checkpoint-latest.zip`** and keep the older backup too.
+
+Send the printed record count. **If Cancel Run does not respond or the backup cell cannot execute, stop there—don’t press restart or power off.**
+
+> Cancel Run did not respond. Can I run the code that you gave me?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-c56843de-8359-4774-8f5b-9b3f5460b56c.png`
+
+**Yes—click the ▶ beside this backup cell once.** It reads the checkpoint and creates a separate ZIP; it does not overwrite the checkpoint.
+
+However, if the scan is still running, **the backup cell may queue behind it**. It cannot force the scan to stop or fix the connection.
+
+- If you see **“Backup verified: … saved records”**, download the ZIP link that appears.
+- If it stays queued or produces no output, **don’t click Run repeatedly, Run All, or restart**.
+
+Your screenshot still shows **“Failed to save draft,”** so execution requests may not be reaching Kaggle. Clicking once is safe to try, but it does not guarantee the backup will start.
+
+> what should i do
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-1f6a2078-1e1a-4531-ac23-1f0ba076f6e4.png`
+
+**Click “Download” in this warning.** It saves a copy of your notebook code and displayed output—not the checkpoint database.
+
+The warning indicates conflicting notebook versions, likely from having the same notebook open in several tabs.
+
+After the download finishes:
+
+1. **Close the other Kaggle editor tabs**, including Edge. Keep only the original Chrome tab.
+2. Refresh that remaining tab once with **Ctrl + R**.
+3. Check whether **“Failed to save draft”** disappears and the session reconnects.
+
+**Don’t click Run All, restart, or power off.** Closing extra browser tabs is different from shutting down the Kaggle session.
+
+Send the session status after refreshing. Keep both the downloaded notebook and your existing checkpoint ZIP.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-35f7c80b-b95d-4492-a4b6-6319b6240aa8.png`
+
+**Click “Reload” if the notebook download has finished** and you’ve closed the other Kaggle editor tabs.
+
+If you haven’t downloaded the notebook yet, click **Cancel** and save that copy first.
+
+This refreshes the browser page; it is not the Kaggle session restart command.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-e7107b5a-9f0c-4077-8b69-5515441c7726.png`
+
+**The page now shows “Draft saved” and a green session indicator.** The **Cancel Run** button is also gone, so it appears ready.
+
+Click inside the **checkpoint-count cell shown in your screenshot**, then press **Shift + Enter once**.
+
+Send the printed result:
+
+```text
+Current checkpoint: … saved records
+```
+
+**Don’t click Run All or restore the older backup.** We’ll check the current record count, then back up the newer progress before resuming.
+
+> I didn't understand what you want me to do exactly here "**The page now shows “Draft saved” and a green session indicator.** The **Cancel Run** button is also gone, so it appears ready.
+>
+> Click inside the **checkpoint-count cell shown in your screenshot**, then press **Shift + Enter once**.
+>
+> Send the printed result:
+> ```
+> Current checkpoint: … saved records
+> ```
+>
+> **Don’t click Run All or restore the older backup.** We’ll check the current record count, then back up the newer progress before resuming."
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-11e0781c-d83c-4196-97a8-5f2ead0d77b6.png`
+
+Do just these three steps:
+
+1. **Click inside the large grey code box** in the middle of your screenshot—the one beginning:
+   ```python
+   from pathlib import Path
+   import sqlite3
+   ```
+
+2. On your keyboard, **hold Shift and press Enter once**, then release both keys. This runs that code box.
+
+3. Wait for a message to appear **directly below the grey box**, then send me a screenshot of it.
+
+You don’t need to edit the code or click either `scan.sqlite` file. This code only counts your saved records; it does not restart the scan.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-50bd9fa8-3c66-4c17-98a9-802d962863fd.png`
+
+**Your newer progress survived: 695,300 records are saved—about 92% of the dataset.** Only **57,503 images** remain to be checked.
+
+First, back up this newer checkpoint:
+
+1. Find the backup code cell beginning with:
+   ```python
+   from pathlib import Path
+   import sqlite3
+   import tempfile
+   import zipfile
+   ```
+   It creates **`rsna-checkpoint-latest.zip`**.
+2. Click inside that cell and press **Shift + Enter once**.
+3. Wait for **“Backup verified: 695,300 saved records”**, then click the ZIP link and download it.
+
+After downloading, run only the **long resumable scanner cell** from `kaggle-resume-manifest.txt`. It will reuse the saved records and continue with the remaining images.
+
+**Keep just this one notebook tab open. Don’t click Run All or restore the older backup.**
+
+> nothing happen
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-f28f4e9a-8c14-4c96-9bda-43af2702ba1f.png`
+
+The cell contains **only the four import lines**, which produce no output. Sorry—the earlier snippet was just to help you locate the full backup cell.
+
+**Replace those four lines with ALL the code below**, then press **Shift + Enter once**:
+
+```python
+from pathlib import Path
+import sqlite3
+import tempfile
+import zipfile
+import os
+from IPython.display import FileLink, display
+
+source = Path("/kaggle/working/rsna-manifest-checkpoint/scan.sqlite")
+archive = Path("/kaggle/working/rsna-checkpoint-latest.zip")
+
+assert source.exists(), "Checkpoint not found"
+print("Creating checkpoint backup. Please wait...", flush=True)
+
+with tempfile.TemporaryDirectory() as temporary:
+    snapshot = Path(temporary) / "scan.sqlite"
+
+    src = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)
+    dst = sqlite3.connect(snapshot)
+
+    try:
+        src.backup(dst)
+        count = dst.execute(
+            "SELECT COUNT(*) FROM images"
+        ).fetchone()[0]
+        assert dst.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+    finally:
+        dst.close()
+        src.close()
+
+    print(f"Verified {count:,} records. Creating ZIP...", flush=True)
+
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(snapshot, "rsna-manifest-checkpoint/scan.sqlite")
+
+print("Backup ready. Click the link below to download:")
+os.chdir("/kaggle/working")
+display(FileLink(archive.name))
+```
+
+Wait for the **`rsna-checkpoint-latest.zip`** link to appear, then click it and let the download finish.
+
+> what next after downloading it
+
+Now resume the remaining scan:
+
+1. Find the **long code cell** you copied from **`kaggle-resume-manifest.txt`**. It begins:
+   ```python
+   # Paste this entire file into ONE new Kaggle code cell and run it.
+   ```
+   and contains `prepare_resumable(...)`.
+
+2. Click inside **that existing cell**, then press **Shift + Enter once**. Don’t copy just the line above—it only identifies the cell.
+
+3. Leave it running. It should reuse approximately **695,300 cached records**, then process the remaining **57,503 images**.
+
+**Don’t restore the downloaded ZIP or click Run All.** The current checkpoint is already in place; the ZIP is your backup.
+
+Keep only one notebook editor tab open. Send the final output when the scan finishes, or any error that appears.
+
+> Is this right?
+>
+> User context
+>
+> Attachments:
+> - # Paste this entire file into ONE new Kaggle code cell and run it. from pathlib…: `~/.codex/attachments/06a037c3-4b90-4386-8480-5845591b0192/pasted-text.txt`
+
+<details><summary>2 previous messages</summary>
+
+> I’ll check that the pasted code is the resumable scanner and uses your existing checkpoint.
+>
+> <details><summary>Explored a file</summary>
+>
+> - Read `~/.codex/attachments/06a037c3-4b90-4386-8480-5845591b0192/pasted-text.txt`
+>
+> </details>
+</details>
+
+**Yes—I checked the attachment. It is the correct resumable scanner**, using your existing checkpoint at:
+
+`/kaggle/working/rsna-manifest-checkpoint`
+
+Paste the **entire code into one Kaggle cell** and press **Shift + Enter once**. If that same cell is already in your notebook, run it there instead.
+
+Initially, you should see increasing **`cached`** counts and **`0 read`**. After approximately **695,300 cached records**, it should begin reading the remaining images.
+
+Keep one notebook tab open, don’t click **Run All**, and send the final output or any error.
+
+> What is this error and what should I do now
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-6c1cd444-c902-4c30-92e4-8898e518d1eb.png`
+
+**The scan finished—all 752,803 images were checked and checkpointed. You do not need to scan them again.**
+
+The error means **some images have identical HU pixel arrays but different patient IDs**. The leakage guard stopped the split because those images could otherwise appear in both training and testing.
+
+This could reflect duplicate images, shared blank/background images, or inconsistent patient identifiers. **We need to inspect the matches before deciding how to handle them. Don’t remove the check or drop images arbitrarily.**
+
+Add a new cell and run this. It reads the saved checkpoint, not the DICOM files:
+
+```python
+from pathlib import Path
+import sqlite3
+import pandas as pd
+
+checkpoint = Path(
+    "/kaggle/working/rsna-manifest-checkpoint/scan.sqlite"
+)
+assert checkpoint.exists(), "Checkpoint not found"
+
+query = """
+WITH images_decoded AS (
+    SELECT
+        id AS image_id,
+        json_extract(record, '$.patient_id') AS patient_id,
+        json_extract(record, '$.study_id') AS study_id,
+        json_extract(record, '$.pixel_hash') AS pixel_hash,
+        json_extract(record, '$.path') AS path
+    FROM images
+    WHERE json_extract(record, '$.status') = 'ok'
+),
+shared_hashes AS (
+    SELECT pixel_hash
+    FROM images_decoded
+    GROUP BY pixel_hash
+    HAVING COUNT(DISTINCT patient_id) > 1
+)
+SELECT *
+FROM images_decoded
+WHERE pixel_hash IN (SELECT pixel_hash FROM shared_hashes)
+ORDER BY pixel_hash, patient_id, image_id
+"""
+
+with sqlite3.connect(
+    checkpoint.as_uri() + "?mode=ro", uri=True
+) as connection:
+    duplicates = pd.read_sql_query(query, connection)
+
+report = Path("/kaggle/working/cross-patient-pixel-matches.csv")
+duplicates.to_csv(report, index=False)
+
+summary = duplicates.groupby("pixel_hash").agg(
+    images=("image_id", "size"),
+    patient_ids=("patient_id", "nunique"),
+    studies=("study_id", "nunique"),
+)
+
+print("Shared pixel-hash groups:", len(summary))
+print("Images involved:", len(duplicates))
+print("Patient IDs involved:", duplicates["patient_id"].nunique())
+print("\nLargest groups:")
+print(
+    summary.sort_values("images", ascending=False)
+    .head(20)
+    .reset_index(drop=True)
+    .to_string(index=False)
+)
+print("\nDetailed report saved:", report)
+```
+
+**Send the printed summary.** Keep the current checkpoint intact. After reviewing these matches, we can resolve the split without repeating the image scan.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-c263d1c3-139f-46e7-a49b-dfb87dbd931a.png`
+
+The check found **4,073 matching-image pairs—8,146 images across 251 patient IDs**. This confirms why the leakage check stopped the split. It does **not** establish that those IDs represent different people.
+
+A safe split can keep all patient IDs linked by matching images **in the same partition**. Before implementing that, we must check whether the matching images have conflicting labels.
+
+**Add one new cell and run this:**
+
+```python
+from pathlib import Path
+import sys
+import pandas as pd
+
+sys.path.insert(0, "/kaggle/working/ich-research")
+from ich.dataset import read_labels
+from ich import LABELS
+
+matches = pd.read_csv(
+    "/kaggle/working/cross-patient-pixel-matches.csv",
+    dtype=str,
+)
+
+labels_path = Path(
+    "/kaggle/input/competitions/"
+    "rsna-intracranial-hemorrhage-detection/"
+    "rsna-intracranial-hemorrhage-detection/stage_2_train.csv"
+)
+
+labels = read_labels(labels_path)
+matched = matches.merge(
+    labels, on="image_id", how="left", validate="one_to_one"
+)
+assert matched[list(LABELS)].notna().all().all(), "Missing labels"
+
+# Identify matching-image groups whose labels disagree.
+disagreement = (
+    matched.groupby("pixel_hash")[list(LABELS)]
+    .nunique()
+    .gt(1)
+)
+conflicting_hashes = disagreement.index[disagreement.any(axis=1)]
+
+conflicts = matched[
+    matched["pixel_hash"].isin(conflicting_hashes)
+]
+conflicts.to_csv(
+    "/kaggle/working/matching-image-label-conflicts.csv",
+    index=False,
+)
+
+# Count how many image pairs link each pair of patient IDs.
+patient_links = matched.groupby("pixel_hash")["patient_id"].apply(
+    lambda values: tuple(sorted(set(values)))
+)
+link_counts = patient_links.value_counts()
+
+print("Matching-image groups:", len(disagreement))
+print("Groups with conflicting labels:", len(conflicting_hashes))
+print("\nConflicting groups per label:")
+print(disagreement.sum().to_string())
+print("\nDistinct patient-ID combinations linked:", len(link_counts))
+print("Largest number of matching images linking one combination:",
+      int(link_counts.max()))
+print("\nConflict report saved: matching-image-label-conflicts.csv")
+```
+
+Send the printed output. This uses the cached report and labels—**it does not rescan the DICOM images**.
+
+Keep the complete checkpoint and duplicate report. Don’t delete the matched images or disable the leakage guard.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-53731caf-498c-45a8-917f-8c98f3b5c63d.png`
+
+<details><summary>6 previous messages</summary>
+
+> The report shows conflicting labels in 838 matching-image pairs, affecting 1,676 images. We cannot determine which labels are correct from these reports.
+>
+> I’ll add a preparation path that uses the completed checkpoint, records both copies of each conflicting pair for exclusion and review, retains one deterministic copy of agreeing duplicates, and keeps all duplicate-linked patient IDs in the same partition. It will preserve the original records and write an exclusion audit without rescanning the DICOMs.
+>
+> <details><summary>Created 2 files, edited a file, ran a command</summary>
+>
+> - Ran `Get-Content ich/dataset.py | Select-Object -First 110; Get-Content tests/test_integrity.py | Select-Object -First 65`
+> - Wrote `./ich/cohort.py` (+102 -0)
+> - Wrote `./ich/dataset.py` (+18 -6)
+> - Wrote `./tests/test_cohort.py` (+66 -0)
+>
+> </details>
+>
+> The new path has regression tests for transitive links—for example, A linked to B and B linked to C—even when the conflicting images are excluded. It also protects against splitting those linked IDs across partitions and requires a complete checkpoint. I’m checking the results and packaging a paste-ready Kaggle cell.
+>
+> <details><summary>Created a file, edited a file, ran a command</summary>
+>
+> - Ran `& ./.venv/Scripts/python.exe -m pytest -q tests/test_cohort.py tests/test_integrity.py`
+> - Wrote `./audit/make_kaggle_cohort_cell.py` (+61 -0)
+> - Wrote `./README.md` (+15 -0)
+>
+> </details>
+>
+> The targeted tests passed: 19 checks covering the new cohort policy and existing integrity guards. The Kaggle cell will write a new manifest and detailed exclusion reports without changing the source labels or completed checkpoint. The broader model and training tests are still finishing.
+>
+> <details><summary>Edited a file, ran a command</summary>
+>
+> - Ran `& ./.venv/Scripts/python.exe audit/make_kaggle_cohort_cell.py; & ./.venv/Scripts/python.exe -m pytest -q --junitxml=audit/test-results-cohort.xml`
+> - Wrote `./audit/VALIDATION.md` (+6 -0)
+>
+> </details>
+</details>
+
+**838 matching-image pairs have conflicting labels, affecting 1,676 images.** The per-label counts overlap because a pair can disagree on several labels.
+
+I’ve prepared a correction using this explicit policy:
+
+- Exclude **all copies with conflicting labels** from the research cohort, preserving them for review.
+- Keep one deterministic copy of matching images whose labels agree.
+- Keep all duplicate-linked patient IDs in the **same partition**.
+- Record every exclusion and preserve the original data.
+
+**All 39 local tests passed.**
+
+To continue:
+
+1. Open **[kaggle-finalize-cohort.txt](<./kaggle-finalize-cohort.txt>)**.
+2. Copy its **entire contents** into **one new Kaggle code cell**.
+3. Press **Shift + Enter once**.
+
+It uses your completed checkpoint—**no DICOM rescan**—and runs validation tests before creating:
+
+```text
+/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv
+```
+
+Send the resulting output before training. This exclusion policy changes the study population, so its reports must accompany any eventual research results.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-69eb71da-b0fe-41dd-830c-be214d3241a4.png`
+
+**The cohort was created successfully, and all 19 checks passed.**
+
+| Partition | Images |
+|---|---:|
+| Training | 521,587 |
+| Validation | 113,086 |
+| Test | 113,213 |
+| **Total retained** | **747,886** |
+
+The audit records **1 unreadable image**, **1,676 images with conflicting labels**, and **3,240 redundant copies** excluded. These are dataset counts—not model performance results.
+
+**Before training or changing session settings, back up the completed checkpoint, reviewed cohort, and patched code.**
+
+Add a new cell and run:
+
+```python
+from pathlib import Path
+import zipfile
+import os
+from IPython.display import FileLink, display
+
+work = Path("/kaggle/working")
+archive = work / "ich-ready-for-training.zip"
+
+folders = [
+    "rsna-reviewed-cohort-v1",
+    "rsna-manifest-checkpoint",
+    "ich-research",
+]
+
+for name in folders:
+    assert (work / name).is_dir(), f"Missing folder: {name}"
+
+print("Creating backup. Please wait...", flush=True)
+
+with zipfile.ZipFile(
+    archive, "w", zipfile.ZIP_DEFLATED, compresslevel=1
+) as z:
+    for name in folders:
+        for path in (work / name).rglob("*"):
+            if path.is_file() and not any(
+                part in {"__pycache__", ".pytest_cache", ".venv"}
+                for part in path.parts
+            ):
+                z.write(path, path.relative_to(work))
+
+print(f"Backup ready: {archive.stat().st_size / 1024**2:.1f} MiB")
+os.chdir(work)
+display(FileLink(archive.name))
+```
+
+**Click `ich-ready-for-training.zip` and let the download finish.** This preserves the completed preparation without downloading the DICOM dataset.
+
+After that, we can configure GPU access and run a small training check before starting the full baseline experiments. Keep the test partition untouched during model selection.
+
+> `ich-ready-for-training.zip`   downloaded done
+
+<details><summary>2 previous messages</summary>
+
+> Context compaction
+>
+> Source: automatic
+> Status: completed
+>
+> System error
+>
+> You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:13 PM.
+</details>
+
+> `ich-ready-for-training.zip`   downloaded done
+
+Your backup is downloaded. **Next, check whether this Kaggle session has a GPU and whether the prepared files are still available.**
+
+Click **+ Code**, paste this entire block into the new cell, and press **Shift + Enter once**:
+
+```python
+from pathlib import Path
+import tensorflow as tf
+
+gpus = tf.config.list_physical_devices("GPU")
+print("GPUs available:", gpus if gpus else "None — CPU only")
+
+paths = {
+    "Prepared manifest":
+        "/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv",
+    "Updated code":
+        "/kaggle/working/ich-research/ich/cohort.py",
+    "Scan checkpoint":
+        "/kaggle/working/rsna-manifest-checkpoint/scan.sqlite",
+}
+
+for name, location in paths.items():
+    print(f"{name}: {'FOUND' if Path(location).is_file() else 'MISSING'}")
+```
+
+**Send me the printed output.** This only checks readiness; it does not rescan the images or start training.
+
+> we need to turn on the GPU here
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-7dfd4c3b-262c-4eeb-87f7-a669b72a88a6.png`
+
+<details><summary>2 previous messages</summary>
+
+> All three prepared files are present. I’ll check the GPU setup instructions before you change the session.
+>
+> <details><summary>Searched the web</summary>
+>
+> Searched the web for `site.kaggle.com docs notebooks accelerator GPU settings`
+>
+> </details>
+</details>
+
+Yes—TensorFlow currently detects **no GPU**. Your prepared files are all present, and you have downloaded the backup.
+
+1. Click **Settings** in the notebook’s top menu.
+2. Select **Accelerator → GPU T4 ×2** if available. These are the GPU selection steps documented by [NVIDIA](https://docs.nvidia.com/datascience/deployment/nightly/platforms/kaggle/).
+3. If Kaggle asks to restart the session to apply the change, confirm. Changing hardware may clear working files; your downloaded ZIP contains the backup.
+4. Wait for the session to become ready.
+5. Run **only the readiness-check cell you just ran** again, using **Shift + Enter**. Do not click **Run All**.
+
+Send its new output. We’ll verify that TensorFlow detects the GPU and restore any missing files before training.
+
+> There is TPU v5e- and there is **GPU T4 ×2** available , which one should I choose?
+
+Choose **GPU T4 ×2**.
+
+Our TensorFlow training code is set up for GPUs. Using the TPU would require additional changes.
+
+Select it, confirm the session restart if prompted, then rerun **only the readiness-check cell** and send me the output.
+
+> What next
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-0db5b00a-2ded-4c74-9a44-2d046d71479f.png`
+
+The top says **“Draft Session off (run a cell to start)”**. The CPU result underneath is from the previous run.
+
+1. Click the small **▶ triangle immediately to the left of `from pathlib import Path`** in your screenshot.
+2. Wait for the session to start and the cell to finish.
+3. Send me the **new output below that cell**, including the GPU list and the FOUND/MISSING lines.
+
+**Click only that cell’s triangle—not “Run All.”**
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-2ad2c839-dfbe-4943-b2e5-6a7d55ac15ca.png`
+
+**Both GPUs are now detected.** The new session has cleared the working files, so we need to restore your downloaded backup.
+
+1. On the right, click **Upload → New Dataset**.
+2. Select **`ich-ready-for-training.zip`** from your laptop.
+3. Set the title to **`ICH Training Backup`** and visibility to **Private**.
+4. Complete the upload and ensure **ICH Training Backup** appears under the notebook’s **Input** section. If needed, use **Add Input** to attach it.
+
+Send me a screenshot once it appears. Then we’ll restore the prepared files—**you do not need to scan the DICOM images again.**
+
+Use **`ich-ready-for-training.zip`**, which contains the completed preparation, rather than the older checkpoint backup.
+
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-fbb8d01e-bfbb-436d-9fc9-0dc40c97796f.png`
+
+**ICH Training Backup is attached correctly.** Now copy its three folders back into the working area.
+
+Click **+ Code**, paste this **entire block**, and press **Shift + Enter once**:
+
+```python
+from pathlib import Path
+from datetime import datetime
+import shutil
+import sqlite3
+import sys
+
+inputs = Path("/kaggle/input")
+work = Path("/kaggle/working")
+
+# Find the complete backup without scanning the DICOM files.
+candidates = set()
+for depth in range(1, 5):
+    pattern = "*/" * depth + "rsna-reviewed-cohort-v1/manifest.csv"
+    for manifest in inputs.glob(pattern):
+        root = manifest.parent.parent
+        if (
+            (root / "ich-research/ich/cohort.py").is_file()
+            and (root / "rsna-manifest-checkpoint/scan.sqlite").is_file()
+        ):
+            candidates.add(root)
+
+if len(candidates) != 1:
+    raise RuntimeError(
+        f"Expected one complete training backup; found: {list(candidates)}"
+    )
+
+source = candidates.pop()
+print("Backup located:", source, flush=True)
+
+# Check the saved database before restoring.
+database = source / "rsna-manifest-checkpoint/scan.sqlite"
+connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+try:
+    assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+    count = connection.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+finally:
+    connection.close()
+
+assert count == 752803, f"Unexpected checkpoint count: {count:,}"
+
+# Preserve any existing working folders before copying the backup.
+stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+folders = [
+    "ich-research",
+    "rsna-manifest-checkpoint",
+    "rsna-reviewed-cohort-v1",
+]
+
+for name in folders:
+    destination = work / name
+    if destination.exists():
+        destination.rename(work / f"{name}.before-restore-{stamp}")
+    shutil.copytree(source / name, destination)
+    print("Restored:", name, flush=True)
+
+sys.path.insert(0, str(work / "ich-research"))
+
+print(f"\nRESTORE COMPLETE: {count:,} checkpoint records.")
+print("Prepared manifest:", work / "rsna-reviewed-cohort-v1/manifest.csv")
+print("No DICOM rescan was needed.")
+```
+
+Send me the output when it finishes. **Run only this cell—not Run All.**
+
+> Is that normal to still running from 6:23 Pm and now 6:52 PM?
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-66f09763-a177-4153-8355-7146faad1b4c.png`
+
+**No—29 minutes with no printed output is longer than expected for this restore.** My folder-search code likely spent time listing the huge competition directories before finding your backup. I’m sorry—that search was too broad.
+
+1. Click **Cancel Run** once. Do not restart the session.
+2. Wait for the cell to stop; a `KeyboardInterrupt` message is expected.
+3. Under **Input → ICH Training Backup**, click the **copy-path icon** beside its name. Hover over the name if the icon is hidden.
+4. Paste that path here.
+
+I’ll use that exact path to restore the backup directly, avoiding the directory search. Your uploaded backup remains safe.
+
+> after i clcik on cancel run gave me this:
+>
+> \--------------------------------------------------------------------------- KeyboardInterrupt                         Traceback (most recent call last) /tmp/ipykernel\_58/3803649152.py in \<cell line: 0>()&#x20;**&#x20;    12** for depth in range(1, 5):&#x20;**&#x20;    13**     pattern = "\*/" \* depth + "rsna-reviewed-cohort-v1/manifest.csv" ---> 14     for manifest in inputs.glob(pattern):&#x20;**&#x20;    15**         root = manifest.parent.parent&#x20;**&#x20;    16**         if (  /usr/lib/python3.12/pathlib.py in glob(self, pattern, case\_sensitive)&#x20;**&#x20;  1092**             pattern\_parts.append('')&#x20;**&#x20;  1093**         selector = \_make\_selector(tuple(pattern\_parts), self.\_flavour, case\_sensitive) -> 1094         for p in selector.select\_from(self):&#x20;**&#x20;  1095**             yield p&#x20;**&#x20;  1096**   /usr/lib/python3.12/pathlib.py in \_select\_from(self, parent\_path, scandir)&#x20;**&#x20;   217**                 if self.match(name):&#x20;**&#x20;   218**                     path = parent\_path.\_make\_child\_relpath(name) --> 219                     for p in self.successor.\_select\_from(path, scandir):&#x20;**&#x20;   220**                         yield p&#x20;**&#x20;   221**   /usr/lib/python3.12/pathlib.py in \_select\_from(self, parent\_path, scandir)&#x20;**&#x20;   217**                 if self.match(name):&#x20;**&#x20;   218**                     path = parent\_path.\_make\_child\_relpath(name) --> 219                     for p in self.successor.\_select\_from(path, scandir):&#x20;**&#x20;   220**                         yield p&#x20;**&#x20;   221**   /usr/lib/python3.12/pathlib.py in \_select\_from(self, parent\_path, scandir)&#x20;**&#x20;   217**                 if self.match(name):&#x20;**&#x20;   218**                     path = parent\_path.\_make\_child\_relpath(name) --> 219                     for p in self.successor.\_select\_from(path, scandir):&#x20;**&#x20;   220**                         yield p&#x20;**&#x20;   221**   /usr/lib/python3.12/pathlib.py in \_select\_from(self, parent\_path, scandir)&#x20;**&#x20;   217**                 if self.match(name):&#x20;**&#x20;   218**                     path = parent\_path.\_make\_child\_relpath(name) --> 219                     for p in self.successor.\_select\_from(path, scandir):&#x20;**&#x20;   220**                         yield p&#x20;**&#x20;   221**   /usr/lib/python3.12/pathlib.py in \_select\_from(self, parent\_path, scandir)&#x20;**&#x20;   210**                 if self.dironly:&#x20;**&#x20;   211**                     try: --> 212                         if not entry.is\_dir():&#x20;**&#x20;   213**                             continue&#x20;**&#x20;   214**                     except OSError:  KeyboardInterrupt:
+
+**The cancellation worked.** The traceback confirms it was stuck searching folders, before copying or changing any files. Your backup is unaffected.
+
+Now:
+
+1. Find **ICH Training Backup** under **Input** on the right.
+2. Hover over its name and click the **copy-path icon** (two overlapping rectangles).
+3. Paste the copied path here.
+
+Do not rerun the previous restore cell. We’ll use the exact backup path to avoid that slow search.
+
+> /kaggle/input/datasets/mabdulal/ich-training-backup
+
+Use that exact path. Click **+ Code**, paste this **entire block**, and press **Shift + Enter once**. It copies only your backup folders and prints progress.
+
+```python
+from pathlib import Path
+from datetime import datetime
+import shutil
+import sqlite3
+import sys
+
+source = Path("/kaggle/input/datasets/mabdulal/ich-training-backup")
+work = Path("/kaggle/working")
+
+required = [
+    "ich-research/ich/cohort.py",
+    "rsna-manifest-checkpoint/scan.sqlite",
+    "rsna-reviewed-cohort-v1/manifest.csv",
+]
+
+for relative in required:
+    if not (source / relative).is_file():
+        raise FileNotFoundError(f"Missing backup file: {source / relative}")
+
+print("Backup files found. Starting restore...", flush=True)
+
+stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+folders = [
+    "ich-research",
+    "rsna-manifest-checkpoint",
+    "rsna-reviewed-cohort-v1",
+]
+
+for name in folders:
+    destination = work / name
+    if destination.exists():
+        preserved = work / f"{name}.before-restore-{stamp}"
+        destination.rename(preserved)
+        print(f"Preserved existing folder: {preserved.name}", flush=True)
+
+    print(f"Copying {name} ...", flush=True)
+    shutil.copytree(source / name, destination)
+    print(f"Restored {name}", flush=True)
+
+# Check the local copy, rather than querying the input mount.
+print("Verifying restored checkpoint...", flush=True)
+database = work / "rsna-manifest-checkpoint/scan.sqlite"
+connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+try:
+    result = connection.execute("PRAGMA quick_check").fetchone()[0]
+    if result != "ok":
+        raise RuntimeError(f"Database check failed: {result}")
+    count = connection.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+finally:
+    connection.close()
+
+if count != 752803:
+    raise RuntimeError(f"Unexpected checkpoint count: {count:,}")
+
+sys.path.insert(0, str(work / "ich-research"))
+
+print(f"\nRESTORE COMPLETE: {count:,} saved records.", flush=True)
+print("Prepared manifest and updated code restored.")
+print("No DICOM rescan was performed.")
+```
+
+**Send the printed output when it finishes.** If it appears stuck, send the last printed line rather than waiting another half hour.
+
+> Backup files found. Starting restore... Copying ich-research ... Restored ich-research Copying rsna-manifest-checkpoint ... Restored rsna-manifest-checkpoint Copying rsna-reviewed-cohort-v1 ... Restored rsna-reviewed-cohort-v1 Verifying restored checkpoint...  RESTORE COMPLETE: 752,803 saved records. Prepared manifest and updated code restored. No DICOM rescan was performed.
+
+<details><summary>2 previous messages</summary>
+
+> The restore succeeded. I’ll check the training code so the next step is a small GPU test that doesn’t trigger another full DICOM scan.
+>
+> <details><summary>Ran a command</summary>
+>
+> - Ran `Get-Content ich/models.py; Get-Content ich/dataset.py; Get-Content ich/training.py`
+>
+> </details>
+</details>
+
+**The full checkpoint, prepared dataset split, and updated code are restored.**
+
+Next, run a **small GPU test using four training images**. This checks image loading, one training step, and saving/reloading a model. It does not use validation or test images, and its loss is **not an experimental result**.
+
+Click **+ Code**, paste this whole block, and run it once:
+
+```python
+from pathlib import Path
+import sys
+import importlib.util
+import subprocess
+
+root = Path("/kaggle/working/ich-research")
+sys.path.insert(0, str(root))
+
+if importlib.util.find_spec("pydicom") is None:
+    subprocess.check_call([
+        sys.executable, "-m", "pip", "install", "pydicom==3.0.2"
+    ])
+
+import numpy as np
+import tensorflow as tf
+
+from ich import LABELS
+from ich.dataset import load_manifest, verify_files
+from ich.preprocessing import load_image
+from ich.models import build_model
+from ich.training import set_seed
+
+assert tf.config.list_physical_devices("GPU"), "No GPU detected."
+set_seed(42)
+
+print("1/5 Checking the saved manifest and partition integrity...", flush=True)
+manifest = load_manifest(
+    "/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv"
+)
+sample = (
+    manifest.loc[manifest.partition.eq("train")]
+    .sample(n=4, random_state=42)
+    .reset_index(drop=True)
+)
+
+print("2/5 Verifying and loading only four training images...", flush=True)
+verify_files(sample)
+x = np.stack([
+    load_image(path, (224, 224)) for path in sample.path
+]).astype("float32")
+y = sample[list(LABELS)].to_numpy(dtype="float32")
+assert np.isfinite(x).all()
+print("Image batch:", x.shape, flush=True)
+
+print("3/5 Building ResNet50 for a hardware test...", flush=True)
+# Random initialization avoids downloading ImageNet weights.
+# This model is only for checking that the pipeline runs.
+with tf.device("/GPU:0"):
+    model = build_model("resnet50", weights=None)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(1e-4),
+        loss="binary_crossentropy",
+    )
+
+    print("4/5 Running one training step...", flush=True)
+    loss = model.train_on_batch(x, y)
+    predictions = model(x, training=False)
+
+assert np.isfinite(np.asarray(loss)).all()
+assert predictions.shape == (4, 6)
+assert np.isfinite(predictions.numpy()).all()
+print("Prediction tensor device:", predictions.device, flush=True)
+assert "GPU" in predictions.device.upper(), "Output was not on GPU."
+
+print("5/5 Checking model saving and reloading...", flush=True)
+output = Path("/kaggle/working/gpu-smoke-test")
+output.mkdir(exist_ok=True)
+model.save(output / "smoke-only.keras")
+
+restored = tf.keras.models.load_model(
+    output / "smoke-only.keras", compile=False
+)
+np.testing.assert_allclose(
+    predictions.numpy(),
+    restored(x, training=False).numpy(),
+    rtol=1e-4,
+    atol=1e-5,
+)
+
+print("\nGPU SMOKE TEST PASSED.")
+print("Four training images checked; validation and test images unused.")
+print("This randomly initialized model is not a research result.")
+```
+
+This test uses **one of your two GPUs**. Send the output when it finishes—or the traceback if it fails.
+
+> 1/5 Checking the saved manifest and partition integrity... 2/5 Verifying and loading only four training images...&#x20;
+> /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_c21b5293d8'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_8d2c70fdb8'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_16867c53f'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_e1fd0fb88f'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_48da3e3d29'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_a7acf4c2e'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_90c3408983'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_4c5dcb06d0'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_23f538d6f'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_98d1dff72d'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_8ef5cfbe58'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg) /usr/local/lib/python3.12/dist-packages/pydicom/valuerep.py:440: UserWarning: Invalid value for VR UI: 'ID\_5be098bfc'. Please see <[https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table\_6.2-1](https://dicom.nema.org/medical/dicom/current/output/html/part05.html#table_6.2-1)> for allowed values for each VR.   warn\_and\_log(msg)&#x20;
+> Image batch: (4, 224, 224, 3) 3/5 Building ResNet50 for a hardware test...&#x20;
+> WARNING: All log messages before absl::InitializeLog() is called are written to STDERR I0000 00:00:1789927221.219136      58 gpu\_device.cc:2020] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 13756 MB memory:  -> device: 0, name: Tesla T4, pci bus id: 0000:00:04.0, compute capability: 7.5 I0000 00:00:1789927221.222153      58 gpu\_device.cc:2020] Created device /job:localhost/replica:0/task:0/device:GPU:1 with 13756 MB memory:  -> device: 1, name: Tesla T4, pci bus id: 0000:00:05.0, compute capability: 7.5&#x20;
+> 4/5 Running one training step... Prediction tensor device: /job:localhost/replica:0/task:0/device:GPU:0 5/5 Checking model saving and reloading...  GPU SMOKE TEST PASSED. Four training images checked; validation and test images unused. This randomly initialized model is not a research result.
+
+**The GPU test passed.** Your output confirms:
+
+- Four real DICOM images loaded and passed identity/pixel checks.
+- ResNet50 completed a training step on **GPU:0 (Tesla T4)**.
+- The model saved and reloaded with matching predictions.
+
+The `Invalid value for VR UI` warnings concern the formatting of DICOM identifiers; they did not prevent this test from completing. Keep those identifiers unchanged.
+
+The next step is a **small ImageNet-pretrained ResNet50 pilot using training and validation data**, with checkpoints so progress can be recovered. Keep the test partition untouched. The smoke-test model used random initialization and should not be used for research evaluation.
+
+> where is the code or should i use the same one?
+
+**Use the new code below.** The previous cell was only a hardware test.
+
+This pilot uses **256 training images and 64 validation images for two epochs**, with ImageNet-pretrained ResNet50. It saves a model checkpoint after each epoch. **The test partition stays untouched, and pilot scores are not final research results.**
+
+Click **+ Code**, paste the entire block, and run it once:
+
+```python
+from pathlib import Path
+from datetime import datetime
+import sys
+import json
+import numpy as np
+import tensorflow as tf
+
+sys.path.insert(0, "/kaggle/working/ich-research")
+
+from ich import LABELS
+from ich.dataset import load_manifest, verify_files, make_dataset
+from ich.models import build_model
+from ich.training import set_seed
+
+SEED = 42
+BATCH_SIZE = 8
+EPOCHS = 2
+
+assert tf.config.list_physical_devices("GPU"), "No GPU detected."
+tf.keras.backend.clear_session()
+set_seed(SEED)
+
+print("1/5 Loading and validating the prepared manifest...", flush=True)
+manifest = load_manifest(
+    "/kaggle/working/rsna-reviewed-cohort-v1/manifest.csv"
+)
+
+# Preserve the existing partitions; never resplit the data.
+train_rows = (
+    manifest.loc[manifest.partition.eq("train")]
+    .sample(n=256, random_state=SEED)
+    .sort_values("image_id")
+)
+val_rows = (
+    manifest.loc[manifest.partition.eq("validation")]
+    .sample(n=64, random_state=SEED)
+    .sort_values("image_id")
+)
+
+for column in ("patient_id", "split_group", "pixel_hash"):
+    assert set(train_rows[column]).isdisjoint(set(val_rows[column]))
+
+output = Path("/kaggle/working") / (
+    "resnet50-pilot-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+)
+output.mkdir()
+train_rows.to_csv(output / "pilot-train.csv", index=False)
+val_rows.to_csv(output / "pilot-validation.csv", index=False)
+
+config = {
+    "purpose": "Small pipeline pilot; not final research evaluation",
+    "baseline": "resnet50",
+    "initial_weights": "imagenet",
+    "frozen_backbone": True,
+    "seed": SEED,
+    "training_images": len(train_rows),
+    "validation_images": len(val_rows),
+    "epochs_requested": EPOCHS,
+    "batch_size": BATCH_SIZE,
+    "learning_rate": 0.0001,
+    "labels": list(LABELS),
+    "test_images_used": 0,
+    "tensorflow_version": tf.__version__,
+}
+(output / "pilot-config.json").write_text(
+    json.dumps(config, indent=2), encoding="utf-8"
+)
+print("Output folder:", output, flush=True)
+
+print("2/5 Verifying only the 320 selected DICOMs...", flush=True)
+for name, frame in (("train", train_rows), ("validation", val_rows)):
+    for start in range(0, len(frame), 32):
+        verify_files(frame.iloc[start:start + 32])
+        print(
+            f"{name}: {min(start + 32, len(frame))}/{len(frame)} verified",
+            flush=True,
+        )
+
+train_ds = make_dataset(
+    train_rows, (224, 224), BATCH_SIZE, training=True, seed=SEED
+)
+val_ds = make_dataset(
+    val_rows, (224, 224), BATCH_SIZE, training=False, seed=SEED
+)
+
+print("3/5 Loading ImageNet-pretrained ResNet50...", flush=True)
+# The first run may download weights. If that fails, stop and report
+# the error; do not substitute random weights for this pilot.
+with tf.device("/GPU:0"):
+    model = build_model("resnet50", weights="imagenet")
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+        loss="binary_crossentropy",
+        jit_compile=False,
+    )
+
+    callbacks = [
+        tf.keras.callbacks.TerminateOnNaN(),
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=str(output / "epoch-{epoch:02d}.keras"),
+            save_best_only=False,
+            verbose=1,
+        ),
+        tf.keras.callbacks.CSVLogger(str(output / "history.csv")),
+    ]
+
+    print("4/5 Training for two pilot epochs...", flush=True)
+    history = model.fit(
+        train_ds,
+        validation_data=val_ds,
+        epochs=EPOCHS,
+        callbacks=callbacks,
+        verbose=1,
+    )
+
+if len(history.epoch) != EPOCHS or not all(
+    np.isfinite(values).all() for values in history.history.values()
+):
+    raise RuntimeError("Pilot did not finish with finite losses.")
+
+print("5/5 Saving the completed pilot...", flush=True)
+model.save(output / "pilot-final.keras")
+(output / "history.json").write_text(
+    json.dumps(history.history, indent=2), encoding="utf-8"
+)
+
+print("\nPILOT COMPLETE")
+print("Saved to:", output)
+print("Test partition unused. These are diagnostic pilot results only.")
+```
+
+The DICOM identifier warnings may appear again. **Send the final output or any error.** Checkpoints are saved inside the Kaggle session; they must still be downloaded or otherwise preserved before ending it.
+
+> User context
+>
+> Attachments:
+> - 1/5 Loading and validating the prepared manifest... Output folder: /kaggle/work…: `~/.codex/attachments/52d00985-c6a7-4c60-ae72-a11b9bcd1c6d/pasted-text.txt`
+
+<details><summary>2 previous messages</summary>
+
+> I’ll read the pilot output to check whether training completed and the checkpoints were saved.
+>
+> <details><summary>Ran a command</summary>
+>
+> - Ran `Get-Content -LiteralPath 'C:\Users\moham\.codex\attachments\52d00985-c6a7-4c60-ae72-a11b9bcd1c6d\pasted-text.txt' -Tail 65`
+>
+> </details>
+</details>
+
+**The pilot completed successfully.** ImageNet weights loaded, both epochs finished, and both checkpoints plus the final model were saved.
+
+| Epoch | Training loss | Validation loss |
+|---|---:|---:|
+| 1 | 0.4270 | 0.2214 |
+| 2 | 0.2539 | 0.2179 |
+
+These confirm that training runs; **they do not establish diagnostic accuracy** on this small sample. The test partition was unused.
+
+**Next, download the pilot files.** Add a new code cell and run:
+
+```python
+from pathlib import Path
+import zipfile
+from IPython.display import FileLink, display
+
+folder = Path(
+    "/kaggle/working/resnet50-pilot-20260920-180430-992869"
+)
+assert (folder / "pilot-final.keras").is_file()
+
+archive = folder.with_suffix(".zip")
+print("Packaging pilot checkpoints and logs...", flush=True)
+
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as z:
+    for file in folder.rglob("*"):
+        if file.is_file():
+            z.write(file, file.relative_to(folder.parent))
+
+print("Click the link below to download:")
+display(FileLink(str(archive)))
+```
+
+Click the resulting ZIP link and keep it alongside `ich-ready-for-training.zip`. Before full training, we need a run plan with recoverable checkpoints and a data-loading approach that avoids repeating the complete DICOM integrity scan for every baseline.
+
+> Packaging pilot checkpoints and logs... Click the link below to download:&#x20;
+> [/kaggle/working/resnet50-pilot-20260920-180430-992869.zip](https://kkb-production.jupyter-proxy.kaggle.net/kaggle/working/resnet50-pilot-20260920-180430-992869.zip)
+>
+> User context
+>
+> Images:
+> - `~/AppData/Local/Temp/codex-clipboard-27dcaa2a-f2b3-4628-8997-c16451b626a0.png`
+
+The **404 is a download-link problem**, not a training failure. My previous code used an absolute path in the link—sorry.
+
+Return to your Kaggle notebook, add a new code cell, and run:
+
+```python
+from pathlib import Path
+import os
+from IPython.display import FileLink, display
+
+os.chdir("/kaggle/working")
+archive = Path("resnet50-pilot-20260920-180430-992869.zip")
+
+assert archive.is_file(), "ZIP file is missing."
+print(f"ZIP found: {archive.stat().st_size / 1024**2:.1f} MiB")
+display(FileLink(archive.name))
+```
+
+**Click the new link beneath that cell.** You do not need to repeat training or recreate the ZIP.
+
+> ZIP is downloaded
+
+**Your pilot is now backed up.** Keep both ZIPs:
+
+- `ich-ready-for-training.zip` — prepared dataset partitions, completed scan checkpoint, and repaired code.
+- `resnet50-pilot-20260920-180430-992869.zip` — pilot models, checkpoints, and logs.
+
+The GPU and training pipeline have passed the small tests. **Do not rerun the DICOM scan or use the test partition yet.**
+
+Next is preparing a full-training runner with resumable checkpoints and efficient data loading before starting the baseline experiments.
+
+> Okay go ahead
+
+<details><summary>6 previous messages</summary>
+
+> I’ll build a training runner that saves progress during each epoch and resumes from the last saved batch. I’ll also remove the separate up-front DICOM scan: the runner will check each image’s identity and pixel hash when it loads that image for training.
+>
+> <details><summary>Created a file, ran 2 commands</summary>
+>
+> - Ran `Get-ChildItem -Force -Name; Get-Content ich/preprocessing.py; Get-Content tests/test_pipeline.py; Get-Content pyproject.toml`
+> - Ran `Get-Content ich/evaluation.py -TotalCount 105; Get-Content ich/losses.py; Get-Content tests/conftest.py; Get-ChildItem -Path . -Filter AGENTS.md -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName`
+> - Wrote `./ich/resumable.py` (+204 -0)
+>
+> </details>
+>
+> The runner now saves the model, optimizer state, and batch position together, and rejects a resume if the data split, code, package versions, or training settings changed. I’m testing interruption and recovery next. One limitation will be explicit: a resumed run may not match an uninterrupted run bit-for-bit because of dropout randomness.
+>
+> <details><summary>Created 2 files, edited 3 files, ran 5 commands</summary>
+>
+> - Wrote `./tests/test_resumable.py` (+73 -0)
+> - Ran `.\.venv\Scripts\python.exe -m pytest tests/test_resumable.py -q`
+> - Ran `Get-Content audit/make_kaggle_cohort_cell.py -TotalCount 38; Get-Content README.md -Tail 24`
+> - Wrote `./audit/make_kaggle_training_cell.py` (+100 -0)
+> - Ran `.\.venv\Scripts\python.exe audit/make_kaggle_training_cell.py`
+> - Ran `.\.venv\Scripts\python.exe -m pytest -q`
+> - Wrote `./README.md` (+47 -0)
+> - Wrote `./audit/make_kaggle_training_cell.py` (+2 -0)
+> - Wrote `./tests/test_resumable.py` (+3 -0)
+> - Ran `.\.venv\Scripts\python.exe audit/make_kaggle_training_cell.py`
+>
+> </details>
+>
+> The recovery tests passed, including a simulated failed checkpoint write. The Kaggle starter will run those tests first, then process just 100 batches of the full ResNet50 run and save progress. It uses one GPU and leaves the test images untouched; the PCA ensemble remains in the existing code and needs a separate resumable workflow.
+>
+> <details><summary>Created a file, ran 2 commands</summary>
+>
+> - Ran `.\.venv\Scripts\python.exe -c "import ast; from pathlib import Path; names=['kaggle-start-resumable-training.txt','kaggle-continue-training.txt','kaggle-backup-training.txt']; [(ast.parse(Path(n).read_text(encoding='utf-8')), print(n, Path(n).stat().st_size, 'bytes: syntax OK')) for n in names]"`
+>
+> - Ran `.\.venv\Scripts\python.exe -m pytest tests/test_resumable.py tests/test_integrity.py tests/test_cohort.py -q`
+>
+> - Wrote `./audit/RESUMABLE-VALIDATION.md` (+28 -0)
+>
+> Tool call
+>
+> Tool: open_in_codex
+> Status: completed
+>
+> </details>
+</details>
+
+The runner is ready. **All 42 local tests passed**, including checkpoint recovery and leakage checks.
+
+Do this next:
+
+1. Open [kaggle-start-resumable-training.txt](<./kaggle-start-resumable-training.txt>).
+2. Copy **the entire file** into **one new Kaggle code cell**.
+3. Run that cell once. **Do not click Run All.**
+
+It will run regression tests, then start a **new ImageNet-pretrained ResNet50 run**, processing up to **100 batches** before saving and stopping. It checks images while loading them, without a separate full DICOM scan. Test images remain unused.
+
+Look for:
+```text
+SEGMENT SAVED.
+Segment status: paused
+```
+
+**“Paused” is expected.** Send me the output before continuing.
+
+The runner preserves model weights, optimizer state and batch position. It uses one GPU; resumed dropout randomness is not guaranteed to match an uninterrupted run exactly.
+
+> How many minutes needs to be finish?
+
+Allow roughly **5–15 minutes** for this first segment, but that is an estimate—we haven’t measured its speed on your session.
+
+It runs tests, loads the model, then processes **100 batches (1,600 training images)** and saves a checkpoint. It also has a **45-minute time limit checked between batches**; saving may add extra time.
+
+This finishes **only the first segment**, not the full three-epoch experiment.
+
+If nothing new prints for **5 minutes**, send me the last output line.
+
+> If I run and I want to stop it to go home can I do that? or should I keep it to another day to run this?
+
+**Yes, you can stop and continue another day—but save and download the new training checkpoint before leaving.** Your earlier ZIPs won’t contain this run’s progress.
+
+For a shorter first segment, change this line near the **bottom** of the starter code:
+
+```python
+max_batches=100, max_minutes=45, workers=4,
+```
+
+to:
+
+```python
+max_batches=10, max_minutes=5, workers=4,
+```
+
+It will stop after 10 batches or the time limit, checked between batches. Setup and checkpoint saving can take additional time.
+
+Then:
+
+1. Wait for **`SEGMENT SAVED`**.
+2. Paste the entire [kaggle-backup-training.txt](<./kaggle-backup-training.txt>) into a new cell and run it.
+3. **Download the ZIP** using the link it prints before closing the session or putting your laptop to sleep.
+
+If you need to leave immediately, **wait until another day to start**. Avoid relying on **Cancel Run**: work after the last saved checkpoint may need to be repeated.
